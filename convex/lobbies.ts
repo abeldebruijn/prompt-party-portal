@@ -82,13 +82,16 @@ export const listViewerLobbies = query({
   },
   handler: async (ctx, args) => {
     const viewer = await requireViewer(ctx);
+    const showAll = args.limit === 0;
     const limit = clampLimit(args.limit);
 
-    const createdLobbies = await ctx.db
+    const createdLobbyQuery = ctx.db
       .query("lobbies")
       .withIndex("hostUserId", (query) => query.eq("hostUserId", viewer._id))
-      .order("desc")
-      .take(limit);
+      .order("desc");
+    const createdLobbies = showAll
+      ? await createdLobbyQuery.collect()
+      : await createdLobbyQuery.take(limit);
 
     const memberships = await ctx.db
       .query("lobbyPlayers")
@@ -112,7 +115,7 @@ export const listViewerLobbies = query({
           .filter((lobby): lobby is Doc<"lobbies"> => lobby !== null)
           .filter((lobby) => lobby.hostUserId !== viewer._id)
           .sort(sortLobbiesByActivity)
-          .slice(0, limit)
+          .slice(0, showAll ? playedLobbies.length : limit)
           .map((lobby) => buildLobbySummary(ctx, lobby)),
       )
     ).filter(Boolean);

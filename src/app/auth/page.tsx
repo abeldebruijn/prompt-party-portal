@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 
 import { AuthShell } from "./auth-shell";
 
-
 const accountModes = [
   {
     eyebrow: "Email + password",

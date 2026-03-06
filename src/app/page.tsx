@@ -64,7 +64,7 @@ function LobbyList({
           </p>
         </div>
         <Button asChild className="rounded-full" size="sm" variant="outline">
-          <Link href="/lobby">Open lobby hub</Link>
+          <Link href="/lobbies">Open full history</Link>
         </Button>
       </div>
 
@@ -140,7 +140,7 @@ function SignedOutHome() {
               </Link>
             </Button>
             <Button asChild className="rounded-full px-6" variant="outline">
-              <Link href="/lobby">Browse lobby entry points</Link>
+              <Link href="/lobbies">Browse lobby entry points</Link>
             </Button>
           </div>
         </SurfaceCard>
@@ -216,13 +216,13 @@ function AuthenticatedHome({
                   </Link>
                 </Button>
                 <Button asChild className="rounded-full px-6" variant="outline">
-                  <Link href="/lobby">Join from lobby hub</Link>
+                  <Link href="/lobbies">Join from lobby hub</Link>
                 </Button>
               </>
             ) : (
               <>
                 <Button asChild className="rounded-full px-6">
-                  <Link href="/lobby">
+                  <Link href="/lobbies">
                     Create or join a lobby
                     <ArrowRightIcon className="size-4" />
                   </Link>
