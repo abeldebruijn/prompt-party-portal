@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @theme inline {
   --color-background: var(--background);
@@ -153,7 +153,7 @@
   }
 
   body::before {
-    content: '';
+    content: "";
     pointer-events: none;
     position: fixed;
     inset: 0;
