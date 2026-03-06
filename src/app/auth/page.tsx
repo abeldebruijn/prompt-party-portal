@@ -5,23 +5,6 @@ import { Badge } from "@/components/ui/badge";
 
 import { AuthShell } from "./auth-shell";
 
-const highlights = [
-  {
-    label: "Fast setup",
-    description:
-      "Move from invite to live lobby with the same rounded, glassy entry flow as the homepage.",
-  },
-  {
-    label: "Clear choices",
-    description:
-      "Email/password hosting and guest account entry are separated so the tradeoffs are obvious.",
-  },
-  {
-    label: "Responsive shell",
-    description:
-      "The layout keeps the mono-forward hierarchy and card stack readable from mobile to desktop.",
-  },
-];
 
 const accountModes = [
   {
@@ -64,9 +47,6 @@ export default function AuthPage() {
             </div>
 
             <div className="mt-6 space-y-4">
-              <h1 className="max-w-3xl font-mono text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-                Pick the right way to enter the lobby.
-              </h1>
               <p className="max-w-2xl text-base leading-7 text-foreground/90 sm:text-lg sm:leading-8">
                 Use an email account when you want a durable host identity, or
                 start with a guest account when you just need a quick seat. The
@@ -74,25 +54,9 @@ export default function AuthPage() {
                 hierarchy as the homepage.
               </p>
             </div>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {highlights.map((item) => (
-                <article
-                  key={item.label}
-                  className="rounded-3xl border border-foreground/12 bg-background/70 p-4"
-                >
-                  <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-                    {item.label}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-foreground/80">
-                    {item.description}
-                  </p>
-                </article>
-              ))}
-            </div>
           </section>
 
-          <section className="grid gap-4 sm:grid-cols-2">
+          <section className="grid gap-4 sm:grid-cols-1">
             {accountModes.map((mode) => (
               <article
                 key={mode.eyebrow}

@@ -241,7 +241,7 @@ export function AuthShell() {
       : isRegister
         ? "Creating your host account and sending you back to the homepage..."
         : "Signing you in and sending you back to the homepage..."
-    : "You will be redirected to the homepage after a successful sign-in.";
+    : "";
 
   return (
     <aside className="rounded-4xl border-2 border-foreground/10 bg-card/85 p-6 shadow-xl shadow-primary/10 backdrop-blur-sm sm:p-8 lg:sticky lg:top-8">
@@ -303,9 +303,6 @@ export function AuthShell() {
                 type="email"
                 value={fields.email}
               />
-              <FieldDescription>
-                Use the address tied to the lobby you will manage and pay for.
-              </FieldDescription>
               <FieldError>{fieldErrors.email}</FieldError>
             </FieldContent>
           </Field>
@@ -338,7 +335,7 @@ export function AuthShell() {
               <FieldDescription>
                 {isRegister
                   ? `Use at least ${MIN_PASSWORD_LENGTH} characters for your host account password.`
-                  : "Use the password connected to this host account."}
+                  : ""}
               </FieldDescription>
               <FieldError>{fieldErrors.password}</FieldError>
             </FieldContent>
@@ -375,15 +372,6 @@ export function AuthShell() {
             </Field>
           ) : null}
 
-          <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-            <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-              Billing responsibility
-            </p>
-            <p className="mt-2 text-sm leading-6 text-foreground/80">
-              Email/password users are billed for guest users in their lobby, so
-              host accounts should be used by the person who owns the room.
-            </p>
-          </div>
 
           <Button
             className="h-11 w-full rounded-full text-sm font-semibold"
