@@ -13,6 +13,7 @@ import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_lobby from "../lib/lobby.js";
 import type * as lobbies from "../lobbies.js";
+import type * as userEmailChange from "../userEmailChange.js";
 import type * as users from "../users.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/lobby": typeof lib_lobby;
   lobbies: typeof lobbies;
+  userEmailChange: typeof userEmailChange;
   users: typeof users;
 }>;
 

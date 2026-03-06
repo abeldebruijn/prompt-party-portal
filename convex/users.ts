@@ -1,12 +1,38 @@
+import { getAuthUserId, retrieveAccount } from "@convex-dev/auth/server";
+import { makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 
-import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { action, mutation, query } from "./_generated/server";
 import {
   ensureViewerUsername,
   requireViewer,
   userHasAuthProvider,
 } from "./lib/auth";
 import { generateFunnyUsername, sanitizeUsername } from "./lib/lobby";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type EmailChangeContext = {
+  isAnonymous: boolean;
+  passwordAccountId: string | null;
+};
+
+const getViewerEmailChangeContextRef = makeFunctionReference<
+  "query",
+  { userId: Id<"users"> },
+  EmailChangeContext
+>("userEmailChange:getViewerEmailChangeContext");
+
+const commitEmailChangeRef = makeFunctionReference<
+  "mutation",
+  {
+    newEmail: string;
+    previousEmail: string;
+    userId: Id<"users">;
+  },
+  { email: string; userId: Id<"users"> }
+>("userEmailChange:commitEmailChange");
 
 export const viewer = query({
   args: {},
@@ -71,5 +97,59 @@ export const updateUsername = mutation({
       email: updatedUser.email ?? null,
       isAnonymous: !!updatedUser.isAnonymous,
     };
+  },
+});
+
+export const changeEmail = action({
+  args: {
+    currentPassword: v.string(),
+    newEmail: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("You must be signed in to do that.");
+    }
+
+    const currentPassword = args.currentPassword.trim();
+    const newEmail = args.newEmail.trim();
+
+    if (!currentPassword) {
+      throw new Error(
+        "Enter your current password to confirm the email change.",
+      );
+    }
+
+    if (!EMAIL_PATTERN.test(newEmail)) {
+      throw new Error("Enter a valid email address.");
+    }
+
+    const context = await ctx.runQuery(getViewerEmailChangeContextRef, {
+      userId,
+    });
+
+    if (context.isAnonymous || context.passwordAccountId === null) {
+      throw new Error(
+        "Upgrade to an email/password account before changing email.",
+      );
+    }
+
+    if (newEmail === context.passwordAccountId) {
+      throw new Error("That is already your current email address.");
+    }
+
+    await retrieveAccount(ctx, {
+      provider: "password",
+      account: {
+        id: context.passwordAccountId,
+        secret: currentPassword,
+      },
+    });
+
+    return await ctx.runMutation(commitEmailChangeRef, {
+      userId,
+      newEmail,
+      previousEmail: context.passwordAccountId,
+    });
   },
 });
