@@ -153,7 +153,6 @@ function AuthenticatedLobbies({
     <main className="mx-auto flex w-full max-w-6xl flex-col px-4 py-10 sm:px-6 lg:px-8">
       <section className="lg:items-start lg:gap-8">
         <SurfaceCard className="sm:p-10">
-
           <h1 className="font-display text-5xl leading-none text-foreground sm:text-6xl">
             All your recent rooms, in one place.
           </h1>

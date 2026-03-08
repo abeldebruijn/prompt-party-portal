@@ -3,6 +3,7 @@
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
+  BotIcon,
   CrownIcon,
   Loader2Icon,
   PartyPopperIcon,
@@ -10,6 +11,7 @@ import {
   SwordsIcon,
   TrophyIcon,
   UserRoundCogIcon,
+  UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -22,7 +24,6 @@ import { api, type Id } from "@/lib/convex";
 import {
   AI_PERSONALITY_OPTIONS,
   buildPlaceholderLeaderboard,
-  getLobbyStateCopy,
 } from "@/lib/lobby-ui";
 import { cn } from "@/lib/utils";
 
@@ -91,30 +92,6 @@ function LobbySelect({ className, ...props }: React.ComponentProps<"select">) {
       )}
       {...props}
     />
-  );
-}
-
-function LobbyStateBadge({
-  state,
-}: {
-  state: LobbySnapshot["lobby"]["state"];
-}) {
-  const className =
-    state === "Creation"
-      ? "border-chart-2/25 bg-chart-2/12 text-foreground"
-      : state === "Playing"
-        ? "border-chart-1/25 bg-chart-1/12 text-foreground"
-        : "border-chart-5/25 bg-chart-5/12 text-foreground";
-
-  return (
-    <Badge
-      className={cn(
-        "rounded-full px-3 py-1 font-mono tracking-[0.18em] uppercase",
-        className,
-      )}
-    >
-      {state}
-    </Badge>
   );
 }
 
@@ -195,16 +172,21 @@ function PlayerList({
   onKick: (playerId: LobbyPlayer["_id"]) => Promise<void>;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {players.map((player) => {
         const isViewer = player._id === viewerPlayerId;
 
         return (
           <div
             key={player._id}
-            className="rounded-3xl border border-foreground/10 bg-background/70 p-4"
+            className={cn(
+              "rounded-2xl border px-4 py-3",
+              isViewer
+                ? "border-primary/30 bg-primary/10 shadow-sm shadow-primary/5"
+                : "border-foreground/10 bg-background/70",
+            )}
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-base font-semibold text-foreground">
@@ -223,14 +205,14 @@ function PlayerList({
                   ) : null}
                 </div>
 
-                <p className="mt-2 text-sm leading-6 text-foreground/70">
+                <p className="mt-1 text-sm leading-6 text-foreground/70">
                   {describePlayer(player, isViewer)}
                 </p>
 
                 {player.kind === "ai" &&
                 player.aiPersonalityType === "custom" &&
                 player.aiCustomPrompt ? (
-                  <p className="mt-2 text-sm leading-6 text-foreground/65">
+                  <p className="mt-0.5 text-sm leading-6 text-foreground/65">
                     Personality: {player.aiCustomPrompt}
                   </p>
                 ) : null}
@@ -490,14 +472,7 @@ export default function LobbyRoomPage() {
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start xl:gap-8">
         <div className="space-y-6">
           <SurfaceCard>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <LobbyStateBadge state={snapshot.lobby.state} />
-                <Badge className="rounded-full border border-foreground/15 bg-background/75 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/75">
-                  Code {snapshot.lobby.joinCode}
-                </Badge>
-              </div>
-
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 asChild
                 className="rounded-full"
@@ -510,21 +485,29 @@ export default function LobbyRoomPage() {
 
             <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="font-display text-5xl leading-none text-foreground sm:text-6xl">
+                <h1 className="font-display text-3xl leading-none text-foreground sm:text-4xl">
                   {snapshot.lobby.selectedGame}
                 </h1>
-                <p className="mt-5 max-w-2xl text-base leading-7 text-foreground/85 sm:text-lg sm:leading-8">
-                  {getLobbyStateCopy(snapshot.lobby.state)}
-                </p>
               </div>
 
-              <div className="rounded-3xl border border-foreground/10 bg-background/70 px-5 py-4 text-right">
-                <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-                  Active players
-                </p>
-                <p className="mt-2 text-3xl font-semibold text-foreground">
-                  {snapshot.lobby.activePlayerCount}
-                </p>
+              <div className="flex flex-wrap items-stretch gap-4">
+                <div className="rounded-3xl border border-foreground/10 bg-background/70 px-5 py-4 text-left">
+                  <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
+                    Code
+                  </p>
+                  <p className="mt-2 font-mono text-3xl font-semibold uppercase tracking-[0.1em] text-foreground">
+                    {snapshot.lobby.joinCode}
+                  </p>
+                </div>
+
+                <div className="rounded-3xl border border-foreground/10 bg-background/70 px-5 py-4 text-right">
+                  <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
+                    Active players
+                  </p>
+                  <p className="mt-2 text-3xl font-semibold text-foreground">
+                    {snapshot.lobby.activePlayerCount}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -550,20 +533,19 @@ export default function LobbyRoomPage() {
           </SurfaceCard>
 
           <SurfaceCard>
-            <div className="flex items-start gap-3">
-              {snapshot.lobby.state === "Creation" ? (
-                <SparklesIcon className="mt-1 size-5 text-primary" />
-              ) : snapshot.lobby.state === "Playing" ? (
-                <SwordsIcon className="mt-1 size-5 text-primary" />
-              ) : (
-                <TrophyIcon className="mt-1 size-5 text-primary" />
-              )}
-
-              <div>
-                <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-                  Live lobby state
-                </p>
-                <h2 className="mt-4 font-display text-4xl leading-none text-foreground">
+            <div>
+              <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
+                Live lobby state
+              </p>
+              <div className="mt-4 flex items-start gap-3">
+                {snapshot.lobby.state === "Creation" ? (
+                  <SparklesIcon className="text-primary size-6" />
+                ) : snapshot.lobby.state === "Playing" ? (
+                  <SwordsIcon className="text-primary size-6" />
+                ) : (
+                  <TrophyIcon className="text-primary size-6" />
+                )}
+                <h2 className="font-display text-2xl leading-none text-foreground">
                   {snapshot.lobby.state === "Creation"
                     ? "Tune the setup before you start."
                     : snapshot.lobby.state === "Playing"
@@ -754,16 +736,12 @@ export default function LobbyRoomPage() {
           </SurfaceCard>
 
           <SurfaceCard>
-            <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-              Active roster
-            </p>
-            <h2 className="mt-4 font-display text-4xl leading-none text-foreground">
-              Everyone currently in the lobby.
-            </h2>
-            <p className="mt-4 text-sm leading-6 text-foreground/75 sm:text-base">
-              Hosts appear first. AI players show their personality style, and
-              late joiners are called out after the round has started.
-            </p>
+            <div className="flex items-start gap-3">
+              <UsersIcon className="text-primary" />
+              <h2 className="font-display text-2xl leading-none text-foreground">
+                Everyone currently in the lobby.
+              </h2>
+            </div>
 
             <div className="mt-6">
               <PlayerList
@@ -784,15 +762,10 @@ export default function LobbyRoomPage() {
         <div className="space-y-6 xl:sticky xl:top-16">
           <SurfaceCard>
             <div className="flex items-start gap-3">
-              <UserRoundCogIcon className="mt-1 size-5 text-primary" />
-              <div>
-                <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-                  Your identity
-                </p>
-                <h2 className="mt-4 font-display text-4xl leading-none text-foreground">
-                  Edit your username anytime.
-                </h2>
-              </div>
+              <UserRoundCogIcon className="text-primary" />
+              <h2 className="font-display text-2xl leading-none text-foreground">
+                Edit your username.
+              </h2>
             </div>
 
             <form className="mt-6 space-y-4" onSubmit={handleUsernameSubmit}>
@@ -827,15 +800,14 @@ export default function LobbyRoomPage() {
 
           {isHost ? (
             <SurfaceCard>
-              <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-                Host controls
-              </p>
-              <h2 className="mt-4 font-display text-4xl leading-none text-foreground">
-                Manage AI guests before the round starts.
-              </h2>
+              <div className="flex items-start gap-3">
+                <BotIcon className="text-primary" />
+                <h2 className="font-display text-2xl leading-none text-foreground">
+                  Manage AI guests.
+                </h2>
+              </div>
               <p className="mt-4 text-sm leading-6 text-foreground/75 sm:text-base">
-                AI personalities are stored in the roster only. They do not
-                actually play yet.
+                AI personalities are stored in the roster only.
               </p>
 
               {snapshot.lobby.state === "Creation" ? (
