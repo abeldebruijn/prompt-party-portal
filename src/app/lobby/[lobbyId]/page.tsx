@@ -4,6 +4,7 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
   BotIcon,
+  ChevronLeft,
   CrownIcon,
   Loader2Icon,
   PartyPopperIcon,
@@ -17,9 +18,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
 import { api, type Id } from "@/lib/convex";
 import {
   AI_PERSONALITY_OPTIONS,
@@ -34,75 +35,21 @@ type LobbyVoteSummary = LobbySnapshot["voteSummary"][number];
 type LobbyGame = LobbySnapshot["lobby"]["selectedGame"];
 type AiPersonality = (typeof AI_PERSONALITY_OPTIONS)[number]["value"];
 
-function SurfaceCard({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section
-      className={cn(
-        "rounded-4xl border-2 border-foreground/10 bg-card/85 p-6 shadow-xl shadow-primary/10 backdrop-blur-sm sm:p-8",
-        className,
-      )}
-    >
-      {children}
-    </section>
-  );
-}
-
-function LobbyInput({ className, ...props }: React.ComponentProps<"input">) {
-  return (
-    <input
-      className={cn(
-        "h-12 w-full rounded-2xl border border-foreground/12 bg-background/80 px-4 text-sm text-foreground shadow-sm outline-none transition focus:border-primary/40 focus:ring-4 focus:ring-primary/10",
-        "placeholder:text-foreground/45 disabled:cursor-not-allowed disabled:opacity-60",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function LobbyTextarea({
-  className,
-  ...props
-}: React.ComponentProps<"textarea">) {
-  return (
-    <textarea
-      className={cn(
-        "min-h-28 w-full rounded-2xl border border-foreground/12 bg-background/80 px-4 py-3 text-sm text-foreground shadow-sm outline-none transition focus:border-primary/40 focus:ring-4 focus:ring-primary/10",
-        "placeholder:text-foreground/45 disabled:cursor-not-allowed disabled:opacity-60",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function LobbySelect({ className, ...props }: React.ComponentProps<"select">) {
-  return (
-    <select
-      className={cn(
-        "h-12 w-full rounded-2xl border border-foreground/12 bg-background/80 px-4 text-sm text-foreground shadow-sm outline-none transition focus:border-primary/40 focus:ring-4 focus:ring-primary/10",
-        "disabled:cursor-not-allowed disabled:opacity-60",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+import {
+  LobbyInput,
+  LobbySelect,
+  LobbyTextarea,
+} from "../_components/lobby-ui";
+import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 
 function LobbyLoading() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
       <SurfaceCard className="w-full text-center">
         <Loader2Icon className="mx-auto size-6 animate-spin text-primary" />
-        <h1 className="mt-5 font-display text-4xl leading-none text-foreground">
+        <SurfaceCardTitle className="mt-5">
           Loading your lobby...
-        </h1>
+        </SurfaceCardTitle>
         <p className="mt-3 text-sm leading-6 text-foreground/70 sm:text-base">
           Pulling the live roster, selected game, and room state from Convex.
         </p>
@@ -118,9 +65,9 @@ function SignedOutRoomPrompt() {
         <Badge className="rounded-full border border-foreground/15 bg-background/75 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/75">
           Lobby access required
         </Badge>
-        <h1 className="mt-5 font-display text-5xl leading-none text-foreground">
+        <SurfaceCardTitle className="mt-5 text-5xl">
           Sign in to keep managing this lobby.
-        </h1>
+        </SurfaceCardTitle>
         <p className="mt-4 max-w-2xl text-base leading-7 text-foreground/80 sm:text-lg sm:leading-8">
           Your lobby membership is tied to your active account session. Re-open
           auth, then come back here to continue.
@@ -130,7 +77,9 @@ function SignedOutRoomPrompt() {
             <Link href="/auth">Open auth</Link>
           </Button>
           <Button asChild className="rounded-full px-6" variant="outline">
-            <Link href="/lobby">Back to lobby hub</Link>
+            <Link href="/lobby">
+              <ChevronLeft className="size-4" /> Back to lobby hub
+            </Link>
           </Button>
         </div>
       </SurfaceCard>
@@ -479,15 +428,17 @@ export default function LobbyRoomPage() {
                 size="sm"
                 variant="outline"
               >
-                <Link href="/lobby">Back to hub</Link>
+                <Link href="/lobby">
+                  <ChevronLeft className="size-4" /> Back to hub
+                </Link>
               </Button>
             </div>
 
             <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="font-display text-3xl leading-none text-foreground sm:text-4xl">
+                <SurfaceCardTitle className="text-3xl sm:text-4xl">
                   {snapshot.lobby.selectedGame}
-                </h1>
+                </SurfaceCardTitle>
               </div>
 
               <div className="flex flex-wrap items-stretch gap-4">
@@ -738,9 +689,9 @@ export default function LobbyRoomPage() {
           <SurfaceCard>
             <div className="flex items-start gap-3">
               <UsersIcon className="text-primary" />
-              <h2 className="font-display text-2xl leading-none text-foreground">
+              <SurfaceCardTitle className="text-2xl">
                 Everyone currently in the lobby.
-              </h2>
+              </SurfaceCardTitle>
             </div>
 
             <div className="mt-6">
@@ -763,9 +714,9 @@ export default function LobbyRoomPage() {
           <SurfaceCard>
             <div className="flex items-start gap-3">
               <UserRoundCogIcon className="text-primary" />
-              <h2 className="font-display text-2xl leading-none text-foreground">
+              <SurfaceCardTitle className="text-2xl">
                 Edit your username.
-              </h2>
+              </SurfaceCardTitle>
             </div>
 
             <form className="mt-6 space-y-4" onSubmit={handleUsernameSubmit}>
@@ -802,9 +753,9 @@ export default function LobbyRoomPage() {
             <SurfaceCard>
               <div className="flex items-start gap-3">
                 <BotIcon className="text-primary" />
-                <h2 className="font-display text-2xl leading-none text-foreground">
+                <SurfaceCardTitle className="text-2xl">
                   Manage AI guests.
-                </h2>
+                </SurfaceCardTitle>
               </div>
               <p className="mt-4 text-sm leading-6 text-foreground/75 sm:text-base">
                 AI personalities are stored in the roster only.
@@ -897,9 +848,9 @@ export default function LobbyRoomPage() {
               <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
                 Player note
               </p>
-              <h2 className="mt-4 font-display text-4xl leading-none text-foreground">
+              <SurfaceCardTitle className="mt-4">
                 Your controls depend on the host.
-              </h2>
+              </SurfaceCardTitle>
               <p className="mt-4 text-sm leading-6 text-foreground/75 sm:text-base">
                 During Creation you can vote on the game. In Playing and
                 Completion, you keep a synchronized view of the roster and
