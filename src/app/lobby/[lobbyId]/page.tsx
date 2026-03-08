@@ -371,7 +371,7 @@ export default function LobbyRoomPage() {
   const [aiPersonality, setAiPersonality] = useState<AiPersonality>("roasting");
   const [aiCustomPrompt, setAiCustomPrompt] = useState("");
   const [completionSummary, setCompletionSummary] = useState(
-    "Placeholder round results are in — celebrate and reset for another lobby setup.",
+    "Round results are in — celebrate and reset for another lobby setup.",
   );
   const confettiCompletionId = useRef<string | null>(null);
 
@@ -567,8 +567,8 @@ export default function LobbyRoomPage() {
                   {snapshot.lobby.state === "Creation"
                     ? "Tune the setup before you start."
                     : snapshot.lobby.state === "Playing"
-                      ? "Placeholder round in progress."
-                      : "Placeholder results are locked in."}
+                      ? "Round in progress."
+                      : "Results are locked in."}
                 </h2>
               </div>
             </div>
@@ -577,8 +577,8 @@ export default function LobbyRoomPage() {
               <div className="mt-6 space-y-6">
                 <p className="text-sm leading-6 text-foreground/75 sm:text-base">
                   {isHost
-                    ? "Choose the active placeholder game for this session. Everyone else can still cast advisory votes."
-                    : "Vote for the placeholder game you want. The host still chooses the final active game."}
+                    ? "Choose the active game for this session. Everyone else can still cast advisory votes."
+                    : "Vote for the game you want. The host still chooses the final active game."}
                 </p>
 
                 <GameVoteGrid
@@ -615,7 +615,7 @@ export default function LobbyRoomPage() {
                         Starting...
                       </>
                     ) : (
-                      "Start placeholder round"
+                      "Start round"
                     )}
                   </Button>
                 ) : null}
@@ -626,10 +626,10 @@ export default function LobbyRoomPage() {
               <div className="mt-6 space-y-6">
                 <div className="rounded-3xl border border-foreground/10 bg-background/70 p-5">
                   <p className="text-sm leading-6 text-foreground/80">
-                    This room is intentionally showing placeholder gameplay
-                    only. The selected title stays visible, the roster keeps
-                    updating, and the host can trigger a mock completion
-                    leaderboard when everyone is ready.
+                    This room is intentionally showing gameplay only. The
+                    selected title stays visible, the roster keeps updating, and
+                    the host can trigger a mock completion leaderboard when
+                    everyone is ready.
                   </p>
                 </div>
 
@@ -647,7 +647,7 @@ export default function LobbyRoomPage() {
                         onChange={(event) =>
                           setCompletionSummary(event.target.value)
                         }
-                        placeholder="Add a playful summary for the placeholder leaderboard."
+                        placeholder="Add a playful summary for the leaderboard."
                         value={completionSummary}
                       />
                     </label>
@@ -676,16 +676,16 @@ export default function LobbyRoomPage() {
                       ) : (
                         <>
                           <PartyPopperIcon className="size-4" />
-                          Finish placeholder round
+                          Finish round
                         </>
                       )}
                     </Button>
                   </div>
                 ) : (
                   <p className="text-sm leading-6 text-foreground/75">
-                    The host controls when this placeholder round moves to the
-                    completion board. You can still stay synced with the roster
-                    in real time.
+                    The host controls when this round moves to the completion
+                    board. You can still stay synced with the roster in real
+                    time.
                   </p>
                 )}
               </div>
@@ -696,7 +696,7 @@ export default function LobbyRoomPage() {
                 <div className="rounded-3xl border border-foreground/10 bg-background/70 p-5">
                   <p className="text-sm leading-6 text-foreground/80">
                     {snapshot.completion.summary ??
-                      "The placeholder leaderboard is ready. Celebrate the standings, then let the host reset the lobby."}
+                      "The leaderboard is ready. Celebrate the standings, then let the host reset the lobby."}
                   </p>
                 </div>
 
@@ -781,7 +781,7 @@ export default function LobbyRoomPage() {
           </SurfaceCard>
         </div>
 
-        <div className="space-y-6 xl:sticky xl:top-8">
+        <div className="space-y-6 xl:sticky xl:top-16">
           <SurfaceCard>
             <div className="flex items-start gap-3">
               <UserRoundCogIcon className="mt-1 size-5 text-primary" />
@@ -929,8 +929,8 @@ export default function LobbyRoomPage() {
                 Your controls depend on the host.
               </h2>
               <p className="mt-4 text-sm leading-6 text-foreground/75 sm:text-base">
-                During Creation you can vote on the placeholder game. In Playing
-                and Completion, you keep a synchronized view of the roster and
+                During Creation you can vote on the game. In Playing and
+                Completion, you keep a synchronized view of the roster and
                 results but cannot access host-only mutations.
               </p>
             </SurfaceCard>

@@ -53,11 +53,11 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="border-b border-foreground/10 bg-background/85 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+    <header className="border-b border-foreground/10 bg-background/85 backdrop-blur w-full sticky top-0 z-50">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-1 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <Link
-            className="font-display text-2xl leading-none text-foreground"
+            className="font-display text-xl leading-none text-foreground"
             href="/"
           >
             Prompt Party Portal
@@ -68,7 +68,7 @@ export function SiteHeader() {
               <Link
                 key={link.href}
                 className={cn(
-                  "rounded-full px-3 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground",
+                  "rounded-full px-3 py-1 text-sm font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-accent-foreground",
                   pathname === link.href && "bg-accent text-accent-foreground",
                 )}
                 href={link.href}
@@ -93,10 +93,10 @@ export function SiteHeader() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center gap-3 rounded-full border border-foreground/12 bg-card/90 px-3 py-2 text-left shadow-sm transition hover:border-primary/25 hover:bg-card"
+                  className="flex items-center gap-3 rounded-full border border-foreground/12 bg-card/90 px-3 py-1 text-left shadow-sm transition hover:border-primary/25 hover:bg-card"
                   type="button"
                 >
-                  <span className="flex size-9 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold text-foreground">
+                  <span className="flex size-7 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-foreground">
                     {viewer.username.slice(0, 1).toUpperCase()}
                   </span>
                   <span className="hidden min-w-0 sm:block">

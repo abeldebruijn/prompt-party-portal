@@ -9,14 +9,13 @@ const accountModes = [
   {
     eyebrow: "Email + password",
     title: "Host with a durable identity.",
-    description:
-      "Choose a saved account when you want a repeatable host profile, cleaner billing ownership, and a lobby you expect to return to.",
+    description: "Only email/password users can create and host games.",
   },
   {
     eyebrow: "Guest account",
-    title: "Join quickly with limits in mind.",
+    title: "Join quickly",
     description:
-      "Guest users have fewer features due to platform limits, so a guest account works best for lightweight participation and quick testing.",
+      "Guest users have fewer features due to platform limits, so a guest account works best for lightweight participation.",
   },
 ];
 

@@ -372,25 +372,6 @@ export default function SettingsPage() {
               </Button>
             </form>
           </SurfaceCard>
-
-          <SurfaceCard className="space-y-4">
-            <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-              Current account
-            </p>
-            <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-              <p className="text-sm font-medium text-foreground/75">
-                Signed-in email
-              </p>
-              <p className="mt-2 text-lg font-semibold text-foreground">
-                {viewer.email}
-              </p>
-            </div>
-            <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4 text-sm leading-6 text-foreground/80">
-              After saving, use the new email address the next time you sign in.
-              Your existing session can stay in place while you continue
-              working.
-            </div>
-          </SurfaceCard>
         </div>
       </section>
     </main>

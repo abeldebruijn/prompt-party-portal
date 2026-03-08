@@ -135,12 +135,15 @@ function SignedOutHome() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild className="rounded-full px-6">
               <Link href="/auth">
-                Open auth
+                Sign in
                 <ArrowRightIcon className="size-4" />
               </Link>
             </Button>
-            <Button asChild className="rounded-full px-6" variant="outline">
-              <Link href="/lobbies">Browse lobby entry points</Link>
+            <Button asChild className="rounded-full px-6">
+              <Link href="/auth">
+                Register
+                <ArrowRightIcon className="size-4" />
+              </Link>
             </Button>
           </div>
         </SurfaceCard>
@@ -150,7 +153,7 @@ function SignedOutHome() {
             What changes after sign-in
           </p>
           {[
-            "Email/password users can create and host placeholder game lobbies.",
+            "Email/password users can create and host game lobbies.",
             "Guests can still join active rooms with a code, then upgrade later.",
             "Returning users see their most recent created and played lobbies on the homepage.",
           ].map((item, index) => (
@@ -183,108 +186,56 @@ function AuthenticatedHome({
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col px-4 py-10 sm:px-6 lg:px-8">
-      <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-start lg:gap-8">
-        <SurfaceCard className="sm:p-10">
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge className="rounded-full border border-foreground/15 bg-background/70 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/70">
-              Dashboard
-            </Badge>
-            <Badge className="rounded-full border border-foreground/15 bg-background/70 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/70">
-              {viewer.authType === "anonymous"
-                ? "Guest account"
-                : "Email + password"}
-            </Badge>
-          </div>
+      <SurfaceCard className="sm:p-10">
+        <h1 className="mt-6 font-display text-5xl leading-none text-foreground sm:text-6xl">
+          Welcome back, {viewer.username}.
+        </h1>
 
-          <h1 className="mt-6 font-display text-5xl leading-none text-foreground sm:text-6xl">
-            Welcome back, {viewer.username}.
-          </h1>
+        <Badge className="rounded-full border border-foreground/15 bg-background/70 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/70">
+          {viewer.authType === "anonymous"
+            ? "Guest account"
+            : "Email + password"}
+        </Badge>
 
-          <p className="mt-6 max-w-2xl text-base leading-7 text-foreground/90 sm:text-lg sm:leading-8">
-            {isGuest
-              ? "You can join active lobbies and review the rooms you recently touched. Upgrade to an email/password account when you want durable host powers and account settings."
-              : "Your home base now shows recent room activity, direct paths back into live lobbies, and account controls for the next hosting session."}
-          </p>
+        <p className="mt-6 max-w-2xl text-base leading-7 text-foreground/90 sm:text-lg sm:leading-8">
+          {isGuest
+            ? "You can join active lobbies and review the rooms you recently touched. Upgrade to an email/password account when you want durable host powers and account settings."
+            : ""}
+        </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            {isGuest ? (
-              <>
-                <Button asChild className="rounded-full px-6">
-                  <Link href="/auth">
-                    Upgrade to host account
-                    <ArrowRightIcon className="size-4" />
-                  </Link>
-                </Button>
-                <Button asChild className="rounded-full px-6" variant="outline">
-                  <Link href="/lobbies">Join from lobby hub</Link>
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button asChild className="rounded-full px-6">
-                  <Link href="/lobbies">
-                    Create or join a lobby
-                    <ArrowRightIcon className="size-4" />
-                  </Link>
-                </Button>
-                <Button asChild className="rounded-full px-6" variant="outline">
-                  <Link href="/settings">Open settings</Link>
-                </Button>
-              </>
-            )}
-          </div>
-        </SurfaceCard>
-
-        <SurfaceCard className="space-y-4">
-          <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-            Account snapshot
-          </p>
-          <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-            <p className="text-sm font-medium text-foreground/75">
-              Signed in as
-            </p>
-            <p className="mt-2 text-lg font-semibold text-foreground">
-              {viewer.email ?? "Guest session"}
-            </p>
-          </div>
-          <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-            <p className="text-sm font-medium text-foreground/75">
-              Created rooms
-            </p>
-            <p className="mt-2 text-3xl font-display text-foreground">
-              {recentLobbies.created.length}
-            </p>
-          </div>
-          <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-            <p className="text-sm font-medium text-foreground/75">
-              Recently played
-            </p>
-            <p className="mt-2 text-3xl font-display text-foreground">
-              {recentLobbies.played.length}
-            </p>
-          </div>
+        <div className="mt-8 flex flex-wrap gap-3">
           {isGuest ? (
-            <div className="rounded-3xl border border-primary/20 bg-primary/8 p-4 text-sm leading-6 text-foreground/80">
-              Guest accounts cannot create lobbies or manage saved account data.
-              Register with email + password when you want durable hosting
-              access.
-            </div>
+            <>
+              <Button asChild className="rounded-full px-6">
+                <Link href="/link-email">
+                  Upgrade to host account
+                  <ArrowRightIcon className="size-4" />
+                </Link>
+              </Button>
+              <Button asChild className="rounded-full px-6" variant="outline">
+                <Link href="/lobby">Join from lobby hub</Link>
+              </Button>
+            </>
           ) : (
-            <div className="rounded-3xl border border-chart-2/20 bg-chart-2/10 p-4 text-sm leading-6 text-foreground/80">
-              Email/password accounts can create lobbies, revisit old rooms, and
-              update both username and email from settings.
-            </div>
+            <Button asChild className="rounded-full px-6">
+              <Link href="/lobby">
+                Create or join a lobby
+                <ArrowRightIcon className="size-4" />
+              </Link>
+            </Button>
           )}
-        </SurfaceCard>
-      </section>
+        </div>
+      </SurfaceCard>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-2">
-        <LobbyList
-          description="Up to five lobbies you created most recently."
-          emptyMessage="You have not created a lobby yet. Use the lobby hub to start your first room."
-          lobbies={recentLobbies.created}
-          title="Recently created"
-        />
+      <section className="mt-6 grid gap-6">
+        {isGuest ? null : (
+          <LobbyList
+            description="Up to five lobbies you created most recently."
+            emptyMessage="You have not created a lobby yet. Use the lobby hub to start your first room."
+            lobbies={recentLobbies.created}
+            title="Recently created"
+          />
+        )}
         <LobbyList
           description="Up to five rooms where you joined as a player."
           emptyMessage="No played lobbies yet. Join a room with a code to have it show up here."

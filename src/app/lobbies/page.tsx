@@ -151,20 +151,10 @@ function AuthenticatedLobbies({
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col px-4 py-10 sm:px-6 lg:px-8">
-      <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-start lg:gap-8">
+      <section className="lg:items-start lg:gap-8">
         <SurfaceCard className="sm:p-10">
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge className="rounded-full border border-foreground/15 bg-background/70 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/70">
-              Lobby history
-            </Badge>
-            <Badge className="rounded-full border border-foreground/15 bg-background/70 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/70">
-              {viewer.authType === "anonymous"
-                ? "Guest account"
-                : "Email + password"}
-            </Badge>
-          </div>
 
-          <h1 className="mt-6 font-display text-5xl leading-none text-foreground sm:text-6xl">
+          <h1 className="font-display text-5xl leading-none text-foreground sm:text-6xl">
             All your recent rooms, in one place.
           </h1>
 
@@ -188,39 +178,9 @@ function AuthenticatedLobbies({
             </Button>
           </div>
         </SurfaceCard>
-
-        <SurfaceCard className="space-y-4">
-          <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-            History snapshot
-          </p>
-          <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-            <p className="text-sm font-medium text-foreground/75">
-              Signed in as
-            </p>
-            <p className="mt-2 text-lg font-semibold text-foreground">
-              {viewer.email ?? "Guest session"}
-            </p>
-          </div>
-          <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-            <p className="text-sm font-medium text-foreground/75">
-              Created rooms
-            </p>
-            <p className="mt-2 text-3xl font-display text-foreground">
-              {lobbies.created.length}
-            </p>
-          </div>
-          <div className="rounded-3xl border border-foreground/10 bg-background/70 p-4">
-            <p className="text-sm font-medium text-foreground/75">
-              Recently played
-            </p>
-            <p className="mt-2 text-3xl font-display text-foreground">
-              {lobbies.played.length}
-            </p>
-          </div>
-        </SurfaceCard>
       </section>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-2">
+      <section className="mt-6 grid gap-6">
         <HistorySection
           description="Every lobby you created, beyond the five-card homepage preview."
           emptyMessage="You have not created a lobby yet. Use the lobby hub to start your first room."

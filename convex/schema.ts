@@ -4,6 +4,7 @@ import { v } from "convex/values";
 
 const schema = defineSchema({
   ...authTables,
+
   users: defineTable({
     name: v.optional(v.string()),
     image: v.optional(v.string()),
@@ -15,6 +16,7 @@ const schema = defineSchema({
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),
+  
   lobbies: defineTable({
     joinCode: v.string(),
     hostUserId: v.id("users"),
@@ -35,6 +37,7 @@ const schema = defineSchema({
   })
     .index("joinCode", ["joinCode"])
     .index("hostUserId", ["hostUserId"]),
+  
   lobbyPlayers: defineTable({
     lobbyId: v.id("lobbies"),
     userId: v.optional(v.id("users")),
@@ -63,6 +66,7 @@ const schema = defineSchema({
     .index("userId", ["userId"])
     .index("lobbyIdAndUserId", ["lobbyId", "userId"])
     .index("lobbyIdAndIsActive", ["lobbyId", "isActive"]),
+  
   lobbyGameVotes: defineTable({
     lobbyId: v.id("lobbies"),
     playerId: v.id("lobbyPlayers"),
@@ -75,6 +79,7 @@ const schema = defineSchema({
   })
     .index("lobbyId", ["lobbyId"])
     .index("lobbyIdAndPlayerId", ["lobbyId", "playerId"]),
+  
   lobbyCompletions: defineTable({
     lobbyId: v.id("lobbies"),
     completedByUserId: v.id("users"),

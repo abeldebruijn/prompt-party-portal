@@ -29,11 +29,11 @@ export function normalizeJoinCodeInput(joinCode: string) {
 export function getLobbyStateCopy(state: string) {
   switch (state) {
     case "Creation":
-      return "Choose a placeholder game, tune the roster, and get everyone ready.";
+      return "Choose a game, tune the roster, and get everyone ready.";
     case "Playing":
-      return "The lobby is in a placeholder round. Late joiners can still drop in.";
+      return "The lobby is in a round. Late joiners can still drop in.";
     case "Completion":
-      return "The placeholder round is done. Celebrate the leaderboard and reset when ready.";
+      return "The round is done. Celebrate the leaderboard and reset when ready.";
     default:
       return "Manage your prompt party lobby.";
   }
@@ -49,7 +49,7 @@ export function buildPlaceholderLeaderboard(
     score: Math.max(18, 100 - index * 14),
     note:
       index === 0
-        ? "Placeholder MVP"
+        ? "MVP"
         : player.kind === "ai"
           ? "AI guest energy"
           : "Strong crowd chemistry",
