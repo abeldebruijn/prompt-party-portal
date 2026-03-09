@@ -35,12 +35,12 @@ type LobbyVoteSummary = LobbySnapshot["voteSummary"][number];
 type LobbyGame = LobbySnapshot["lobby"]["selectedGame"];
 type AiPersonality = (typeof AI_PERSONALITY_OPTIONS)[number]["value"];
 
+import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import {
   LobbyInput,
   LobbySelect,
   LobbyTextarea,
 } from "../_components/lobby-ui";
-import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 
 function LobbyLoading() {
   return (

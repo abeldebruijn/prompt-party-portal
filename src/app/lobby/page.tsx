@@ -6,13 +6,12 @@ import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api } from "@/lib/convex";
-
 import { CreateLobbyCard } from "./_components/create-lobby-card";
 import { JoinLobbyCard } from "./_components/join-lobby-card";
 import { LobbyHubLoading } from "./_components/lobby-hub-loading";
 import { SignedOutPrompt } from "./_components/signed-out-prompt";
-import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 
 export default function LobbyHubPage() {
   const { isAuthenticated, isLoading } = useConvexAuth();

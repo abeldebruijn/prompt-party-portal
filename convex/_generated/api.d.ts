@@ -13,6 +13,11 @@ import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_lobby from "../lib/lobby.js";
 import type * as lobbies from "../lobbies.js";
+import type * as lobbies_constants from "../lobbies/constants.js";
+import type * as lobbies_helpers from "../lobbies/helpers.js";
+import type * as lobbies_mutations from "../lobbies/mutations.js";
+import type * as lobbies_queries from "../lobbies/queries.js";
+import type * as lobbies_types from "../lobbies/types.js";
 import type * as userEmailChange from "../userEmailChange.js";
 import type * as users from "../users.js";
 
@@ -28,6 +33,11 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/lobby": typeof lib_lobby;
   lobbies: typeof lobbies;
+  "lobbies/constants": typeof lobbies_constants;
+  "lobbies/helpers": typeof lobbies_helpers;
+  "lobbies/mutations": typeof lobbies_mutations;
+  "lobbies/queries": typeof lobbies_queries;
+  "lobbies/types": typeof lobbies_types;
   userEmailChange: typeof userEmailChange;
   users: typeof users;
 }>;

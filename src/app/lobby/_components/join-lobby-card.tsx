@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api } from "@/lib/convex";
 import { normalizeJoinCodeInput } from "@/lib/lobby-ui";
 import { LobbyInput } from "./lobby-ui";
-import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 
 export function JoinLobbyCard({
   disabled,
