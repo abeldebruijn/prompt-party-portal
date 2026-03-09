@@ -8,9 +8,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api } from "@/lib/convex";
 import { LobbySelect } from "./lobby-ui";
-import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 
 type LobbyGame = FunctionReturnType<
   typeof api.lobbies.listAvailableGames
