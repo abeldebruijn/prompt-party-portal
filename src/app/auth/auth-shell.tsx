@@ -372,7 +372,6 @@ export function AuthShell() {
             </Field>
           ) : null}
 
-
           <Button
             className="h-11 w-full rounded-full text-sm font-semibold"
             disabled={isBusy}
