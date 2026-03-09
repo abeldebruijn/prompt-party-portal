@@ -7,15 +7,20 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "test": "vitest",
+    "test:once": "vitest run",
+    "test:debug": "vitest --inspect-brk --no-file-parallelism"
   },
   "dependencies": {
     "@auth/core": "0.37.0",
     "@convex-dev/auth": "^0.0.91",
+    "@edge-runtime/vm": "^5.0.0",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.32.0",
+    "convex-test": "^0.0.41",
     "lucide-react": "^0.577.0",
     "next": "16.1.6",
     "next-themes": "^0.4.6",
@@ -23,7 +28,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "vitest": "^4.0.18"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
