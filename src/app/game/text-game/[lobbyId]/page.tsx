@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,54 +125,99 @@ function ProgressList({
   );
 }
 
+function LeaderboardItem({
+  entry,
+}: {
+  entry: GameSnapshot["leaderboard"][number];
+}) {
+  const prevRank = useRef(entry.rank);
+  const [direction, setDirection] = useState<"up" | "down" | "none">("none");
+
+  useEffect(() => {
+    if (entry.rank < prevRank.current) {
+      setDirection("up");
+    } else if (entry.rank > prevRank.current) {
+      setDirection("down");
+    }
+    prevRank.current = entry.rank;
+  }, [entry.rank]);
+
+  useEffect(() => {
+    if (direction !== "none") {
+      const t = setTimeout(() => setDirection("none"), 500);
+      return () => clearTimeout(t);
+    }
+  }, [direction]);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        scale: direction === "up" ? 1.02 : direction === "down" ? 0.98 : 1,
+        rotate: direction === "up" ? -2 : direction === "down" ? 2 : 0,
+        zIndex: direction === "up" ? 10 : 1,
+      }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{
+        layout: { type: "spring", stiffness: 300, damping: 25 },
+        scale: { type: "spring", stiffness: 400, damping: 25 },
+        rotate: { type: "spring", stiffness: 400, damping: 25 },
+      }}
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-3xl border px-4 py-3 origin-center",
+        entry.rank === 1
+          ? "border-primary/30 bg-primary/5 shadow-sm shadow-primary/10"
+          : entry.rank === 2
+            ? "border-emerald-500/30 bg-emerald-500/5 shadow-sm shadow-emerald-500/10"
+            : entry.rank === 3
+              ? "border-amber-500/30 bg-amber-500/5 shadow-sm shadow-amber-500/10"
+              : "border-foreground/10 bg-background/75",
+      )}
+    >
+      <div className="flex items-center gap-3 overflow-hidden">
+        <span
+          className={cn(
+            "font-mono text-sm font-bold min-w-5",
+            entry.rank === 1
+              ? "text-primary"
+              : entry.rank === 2
+                ? "text-emerald-500"
+                : entry.rank === 3
+                  ? "text-amber-500"
+                  : "text-foreground/50",
+          )}
+        >
+          #{entry.rank}
+        </span>
+        <span className="truncate font-medium text-foreground">
+          {entry.displayName}
+        </span>
+      </div>
+      <div className="flex items-baseline gap-1 shrink-0">
+        <span className="font-mono text-sm font-medium tabular-nums text-foreground/70">
+          {entry.score}
+        </span>
+        <span className="text-xs font-medium text-foreground/40">pts</span>
+      </div>
+    </motion.div>
+  );
+}
+
 function Leaderboard({
   leaderboard,
 }: {
   leaderboard: GameSnapshot["leaderboard"];
 }) {
   return (
-    <div className="grid gap-3">
-      {leaderboard.map((entry) => (
-        <div
-          key={entry.playerId ?? entry.displayName}
-          className={cn(
-            "flex items-center justify-between gap-3 rounded-3xl border px-4 py-3",
-            entry.rank === 1
-              ? "border-primary/30 bg-primary/5 shadow-sm shadow-primary/10"
-              : entry.rank === 2
-                ? "border-emerald-500/30 bg-emerald-500/5 shadow-sm shadow-emerald-500/10"
-                : entry.rank === 3
-                  ? "border-amber-500/30 bg-amber-500/5 shadow-sm shadow-amber-500/10"
-                  : "border-foreground/10 bg-background/75",
-          )}
-        >
-          <div className="flex items-center gap-3 overflow-hidden">
-            <span
-              className={cn(
-                "font-mono text-sm font-bold min-w-5",
-                entry.rank === 1
-                  ? "text-primary"
-                  : entry.rank === 2
-                    ? "text-emerald-500"
-                    : entry.rank === 3
-                      ? "text-amber-500"
-                      : "text-foreground/50",
-              )}
-            >
-              #{entry.rank}
-            </span>
-            <span className="truncate font-medium text-foreground">
-              {entry.displayName}
-            </span>
-          </div>
-          <div className="flex items-baseline gap-1 shrink-0">
-            <span className="font-mono text-sm font-medium tabular-nums text-foreground/70">
-              {entry.score}
-            </span>
-            <span className="text-xs font-medium text-foreground/40">pts</span>
-          </div>
-        </div>
-      ))}
+    <div className="grid gap-3 relative">
+      <AnimatePresence>
+        {leaderboard.map((entry) => (
+          <LeaderboardItem key={entry.playerId ?? entry.displayName} entry={entry} />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -389,10 +435,10 @@ function JudgeStage({
   }, [snapshot.round.judgeSubmissions]);
 
   return (
-    <div className="mt-10 border-t border-foreground/10 pt-10">
+    <div className="mt-6 border-t border-foreground/10 pt-6">
       {isJudge ? (
         <div className="mt-6 space-y-4">
-          {snapshot.round.judgeSubmissions.map((submission, index) => {
+          {snapshot.round.judgeSubmissions.map((submission) => {
             const draft = ratingDrafts[submission.submissionId] ?? {
               correctnessStars: submission.correctnessStars,
               creativityStars: submission.creativityStars,
@@ -403,9 +449,6 @@ function JudgeStage({
                 key={submission.submissionId}
                 className="rounded-3xl border border-foreground/10 bg-background/75 p-5"
               >
-                <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-                  Anonymous answer #{index + 1}
-                </p>
                 <p className="mt-3 text-base leading-7 text-foreground">
                   {submission.answer}
                 </p>
