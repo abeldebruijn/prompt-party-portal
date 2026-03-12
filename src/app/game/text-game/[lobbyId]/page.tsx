@@ -606,6 +606,33 @@ export default function TextGamePage() {
     !snapshot.round.viewerSubmission;
   const isJudge = snapshot.viewer.role === "Judge";
 
+  // If round is the last round show component for final results
+  if (snapshot.round.roundNumber === snapshot.session.roundCount) {
+    return (
+      <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
+        <SurfaceCard>
+          <SurfaceCardTitle className="text-2xl">
+            <TrophyIcon className="size-5 text-primary" />
+            Leaderboard
+          </SurfaceCardTitle>
+          <div className="mt-6">
+            <Leaderboard leaderboard={snapshot.leaderboard} />
+          </div>
+        </SurfaceCard>
+
+        {/* If user is host show reset lobby button */}
+        {snapshot.viewer.isHost ? (
+          <Button
+            className="mt-6 rounded-full px-6"
+            onClick={() => resetLobby({ lobbyId })}
+          >
+            Reset lobby
+          </Button>
+        ) : null}
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start xl:gap-8">
