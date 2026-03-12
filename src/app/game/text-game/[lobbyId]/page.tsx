@@ -57,14 +57,14 @@ function SignedOutState() {
 function statusTone(state: string) {
   switch (state) {
     case "Submitted":
-      return "border-emerald-500/25 bg-emerald-500/10 text-emerald-900";
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-400";
     case "Target":
-      return "border-amber-500/25 bg-amber-500/10 text-amber-900";
+      return "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-400";
     case "Spectating":
     case "AiExcluded":
-      return "border-foreground/12 bg-background/70 text-foreground/65";
+      return "border-foreground/15 bg-foreground/5 text-foreground/60";
     default:
-      return "border-foreground/12 bg-background/70 text-foreground";
+      return "border-foreground/15 bg-foreground/5 text-foreground/80";
   }
 }
 
@@ -101,23 +101,23 @@ function ProgressList({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="flex flex-wrap gap-2">
       {progress
         .toSorted((a, b) => progressOrder(a.state) - progressOrder(b.state))
         .map((entry) => (
           <div
             key={entry.playerId}
             className={cn(
-              "rounded-3xl border px-4 py-3",
+              "flex items-center gap-2 rounded-xl border px-3 py-2",
               statusTone(entry.state),
             )}
           >
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium">{entry.displayName}</span>
-              <Badge className="rounded-full border border-current/15 bg-transparent px-2.5 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-current hover:bg-transparent">
-                {entry.state}
-              </Badge>
-            </div>
+            <span className="max-w-[140px] truncate text-sm font-medium">
+              {entry.displayName}
+            </span>
+            <span className="text-[0.65rem] font-bold uppercase tracking-[0.15em] opacity-60">
+              {entry.state}
+            </span>
           </div>
         ))}
     </div>
@@ -138,14 +138,24 @@ function Leaderboard({
             "flex items-center justify-between gap-3 rounded-3xl border px-4 py-3",
             entry.rank === 1
               ? "border-primary/30 bg-primary/5 shadow-sm shadow-primary/10"
-              : "border-foreground/10 bg-background/75",
+              : entry.rank === 2
+                ? "border-emerald-500/30 bg-emerald-500/5 shadow-sm shadow-emerald-500/10"
+                : entry.rank === 3
+                  ? "border-amber-500/30 bg-amber-500/5 shadow-sm shadow-amber-500/10"
+                  : "border-foreground/10 bg-background/75",
           )}
         >
           <div className="flex items-center gap-3 overflow-hidden">
             <span
               className={cn(
-                "font-mono text-sm font-bold",
-                entry.rank === 1 ? "text-primary" : "text-foreground/50",
+                "font-mono text-sm font-bold min-w-5",
+                entry.rank === 1
+                  ? "text-primary"
+                  : entry.rank === 2
+                    ? "text-emerald-500"
+                    : entry.rank === 3
+                      ? "text-amber-500"
+                      : "text-foreground/50",
               )}
             >
               #{entry.rank}
@@ -154,9 +164,12 @@ function Leaderboard({
               {entry.displayName}
             </span>
           </div>
-          <span className="shrink-0 text-sm font-medium text-foreground/70">
-            {entry.score} <span className="text-foreground/40">pts</span>
-          </span>
+          <div className="flex items-baseline gap-1 shrink-0">
+            <span className="font-mono text-sm font-medium tabular-nums text-foreground/70">
+              {entry.score}
+            </span>
+            <span className="text-xs font-medium text-foreground/40">pts</span>
+          </div>
         </div>
       ))}
     </div>
@@ -172,23 +185,34 @@ function RatingSelector({
   value: number | null;
   onChange: (value: number) => void;
 }) {
+  const [hoverValue, setHoverValue] = useState<number | null>(null);
+
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-foreground/80">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {Array.from({ length: 6 }, (_, index) => index).map((option) => (
-          <Button
-            key={option}
-            className="rounded-full px-3"
-            onClick={() => onChange(option)}
-            size="sm"
-            type="button"
-            variant={value === option ? "default" : "outline"}
-          >
-            <StarIcon className="size-3.5" />
-            {option}
-          </Button>
-        ))}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: Used for visual hover state only */}
+      <div className="flex gap-1" onMouseLeave={() => setHoverValue(null)}>
+        {Array.from({ length: 5 }, (_, i) => i + 1).map((option) => {
+          const isFilled = (hoverValue ?? value ?? 0) >= option;
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onChange(option)}
+              onMouseEnter={() => setHoverValue(option)}
+              className="group relative rounded-full p-1.5 transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              <StarIcon
+                className={cn(
+                  "size-8 transition-all duration-300",
+                  isFilled
+                    ? "fill-primary text-primary"
+                    : "fill-transparent text-foreground/20 group-hover:text-primary/30",
+                )}
+              />
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -262,9 +286,20 @@ function GenerateStage({
           </Button>
         </form>
       ) : snapshot.viewer.role === "Judge" ? (
-        <div className="rounded-3xl border border-amber-500/25 bg-amber-500/10 p-5 text-sm leading-6 text-foreground/80">
-          You are this round’s judge. Wait for the other players to submit, then
-          score the anonymous answers.
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl border border-amber-500/25 bg-amber-500/5 px-5 py-10 text-center">
+          <div className="flex items-center gap-3">
+            <span className="relative flex size-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex size-3 rounded-full bg-amber-500"></span>
+            </span>
+            <span className="font-medium text-amber-700 dark:text-amber-500">
+              You are the judge
+            </span>
+          </div>
+          <p className="max-w-[320px] text-sm leading-6 text-foreground/70">
+            Players are generating answers right now. Get ready to score their
+            anonymous submissions!
+          </p>
         </div>
       ) : snapshot.round.viewerSubmission ? (
         <div className="rounded-3xl border border-emerald-500/25 bg-emerald-500/10 p-5">
@@ -276,9 +311,15 @@ function GenerateStage({
           </p>
         </div>
       ) : (
-        <div className="rounded-3xl border border-foreground/10 bg-background/70 p-5 text-sm leading-6 text-foreground/80">
-          You joined after this round started, so you are spectating until the
-          next prompt.
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl border border-foreground/10 bg-background/50 px-5 py-10 text-center">
+          <div className="flex items-center gap-2 text-foreground/60">
+            <Loader2Icon className="size-5 animate-spin" />
+            <span className="font-medium">Spectating</span>
+          </div>
+          <p className="max-w-[280px] text-sm leading-6 text-foreground/70">
+            You joined after this round started. Sit back and relax until the
+            next prompt.
+          </p>
         </div>
       )}
 
@@ -299,7 +340,7 @@ function GenerateStage({
               Advancing...
             </>
           ) : (
-            "Force advance to judge"
+            "Skip to judging"
           )}
         </Button>
       ) : null}
@@ -429,8 +470,17 @@ function JudgeStage({
           })}
         </div>
       ) : (
-        <div className="mt-6 rounded-3xl border border-foreground/10 bg-background/70 p-5 text-sm leading-6 text-foreground/80">
-          {snapshot.round.targetPlayer?.displayName} is rating the answers now.
+        <div className="mt-6 flex flex-col items-center justify-center space-y-4 rounded-3xl border border-foreground/10 bg-background/50 px-5 py-10 text-center">
+          <div className="flex items-center gap-2 text-foreground/60">
+            <Loader2Icon className="size-5 animate-spin" />
+            <span className="font-medium">Scoring in progress</span>
+          </div>
+          <p className="max-w-[300px] text-sm leading-6 text-foreground/70">
+            <strong className="font-medium text-foreground">
+              {snapshot.round.targetPlayer?.displayName}
+            </strong>{" "}
+            is rating the anonymous answers now.
+          </p>
         </div>
       )}
     </div>
@@ -635,27 +685,23 @@ export default function TextGamePage() {
 
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start xl:gap-8">
-        <div className="space-y-6">
-          <SurfaceCard>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                asChild
-                className="rounded-full"
-                size="sm"
-                variant="outline"
-              >
-                <Link href={`/lobby/${lobbyId}`}>
-                  <ChevronLeft className="size-4" /> Back to lobby
-                </Link>
-              </Button>
+      <div className="flex items-center sticky top-20 z-10 justify-center sm:justify-end">
+        <div className="grid place-items-center p-1 m-2 rounded-full bg-radial from-background/80 via-background/20 to-background/0 to-80% backdrop-blur-[2px] select-none">
+          <div className="grid place-items-center p-1 rounded-full bg-radial from-background/80 via-background/20 to-background/0 backdrop-blur-sm select-none">
+            <div className="grid place-items-center p-1 rounded-full bg-radial from-background/80 via-background/20 to-background/0 backdrop-blur-md select-none">
               <Badge className="rounded-full border border-foreground/15 bg-background/75 px-3 py-1 font-mono text-[0.7rem] tracking-[0.24em] text-foreground/70 uppercase hover:bg-background/75">
                 Round {snapshot.round.roundNumber} /{" "}
                 {snapshot.session.roundCount}
               </Badge>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <SurfaceCardTitle className="mt-6 text-3xl sm:text-4xl">
+      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start xl:gap-8">
+        <div className="space-y-6">
+          <SurfaceCard>
+            <SurfaceCardTitle className="text-3xl sm:text-4xl leading-tight">
               {snapshot.round.promptText}
             </SurfaceCardTitle>
 
