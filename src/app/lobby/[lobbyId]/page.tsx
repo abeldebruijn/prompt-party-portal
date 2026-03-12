@@ -17,7 +17,7 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type * as React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -308,7 +308,6 @@ export default function LobbyRoomPage() {
     "Round results are in — celebrate and reset for another lobby setup.",
   );
   const [textGameRoundCountDraft, setTextGameRoundCountDraft] = useState("10");
-  const confettiCompletionId = useRef<string | null>(null);
 
   const viewerPlayer = useMemo(() => {
     if (!snapshot?.viewer) {
@@ -343,32 +342,6 @@ export default function LobbyRoomPage() {
       setTextGameRoundCountDraft(String(snapshot.lobby.textGameRoundCount));
     }
   }, [snapshot?.lobby.selectedGame, snapshot?.lobby.textGameRoundCount]);
-
-  useEffect(() => {
-    if (
-      !snapshot?.completion?._id ||
-      confettiCompletionId.current === snapshot.completion._id
-    ) {
-      return;
-    }
-
-    confettiCompletionId.current = snapshot.completion._id;
-
-    void import("canvas-confetti").then(({ default: fireConfetti }) => {
-      fireConfetti({
-        angle: 60,
-        origin: { x: 0 },
-        particleCount: 90,
-        spread: 60,
-      });
-      fireConfetti({
-        angle: 120,
-        origin: { x: 1 },
-        particleCount: 90,
-        spread: 60,
-      });
-    });
-  }, [snapshot?.completion?._id]);
 
   useEffect(() => {
     if (
@@ -439,6 +412,17 @@ export default function LobbyRoomPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mb-6 xl:hidden">
+        <SurfaceCard className="flex flex-col items-center justify-center p-6 sm:p-8">
+          <p className="font-mono text-xs tracking-[0.25em] text-foreground/60 uppercase">
+            Lobby Code
+          </p>
+          <p className="mt-3 font-mono text-5xl font-bold uppercase tracking-[0.2em] text-foreground">
+            {snapshot.lobby.joinCode}
+          </p>
+        </SurfaceCard>
+      </div>
+
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start xl:gap-8">
         <div className="space-y-6">
           <SurfaceCard>
@@ -463,15 +447,6 @@ export default function LobbyRoomPage() {
               </div>
 
               <div className="flex flex-wrap items-stretch gap-4">
-                <div className="rounded-3xl border border-foreground/10 bg-background/70 px-5 py-4 text-left">
-                  <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-                    Code
-                  </p>
-                  <p className="mt-2 font-mono text-3xl font-semibold uppercase tracking-[0.1em] text-foreground">
-                    {snapshot.lobby.joinCode}
-                  </p>
-                </div>
-
                 <div className="rounded-3xl border border-foreground/10 bg-background/70 px-5 py-4 text-right">
                   <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
                     Active players
@@ -788,6 +763,15 @@ export default function LobbyRoomPage() {
         </div>
 
         <div className="space-y-6 xl:sticky xl:top-16">
+          <SurfaceCard className="hidden xl:flex flex-col items-center justify-center p-6 sm:p-8">
+            <p className="font-mono text-xs tracking-[0.25em] text-foreground/60 uppercase">
+              Lobby Code
+            </p>
+            <p className="mt-3 font-mono text-5xl font-bold uppercase tracking-[0.2em] text-foreground">
+              {snapshot.lobby.joinCode}
+            </p>
+          </SurfaceCard>
+
           <SurfaceCard>
             <div className="flex items-start gap-3">
               <UserRoundCogIcon className="text-primary" />
