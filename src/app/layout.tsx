@@ -26,6 +26,9 @@ export const metadata: Metadata = {
   title: "Prompt Party Portal",
   description:
     "Create lobbies, join with a code, and manage your Prompt Party account.",
+  appleWebApp: {
+    title: "Prompt Party Portal",
+  },
 };
 
 export default function RootLayout({
