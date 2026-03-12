@@ -292,6 +292,7 @@ describe("convex/textGame", () => {
       correctnessStars: 4,
       creativityStars: 3,
     });
+    await host.client.mutation(api.textGame.advanceToPresent, { lobbyId });
 
     await expireCurrentPresentRound(t, lobbyId);
     await bob.client.mutation(api.textGame.advanceAfterPresent, { lobbyId });
@@ -338,6 +339,7 @@ describe("convex/textGame", () => {
       correctnessStars: 1,
       creativityStars: 1,
     });
+    await alice.client.mutation(api.textGame.advanceToPresent, { lobbyId });
 
     await expireCurrentPresentRound(t, lobbyId);
     await host.client.mutation(api.textGame.advanceAfterPresent, { lobbyId });

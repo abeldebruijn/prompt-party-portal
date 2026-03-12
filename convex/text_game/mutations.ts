@@ -265,8 +265,8 @@ export const rateSubmission = mutation({
   args: {
     lobbyId: v.id("lobbies"),
     submissionId: v.id("textGameSubmissions"),
-    correctnessStars: v.number(),
-    creativityStars: v.number(),
+    correctnessStars: v.optional(v.number()),
+    creativityStars: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const membership = await requireTextGameMembership(ctx, args.lobbyId);
@@ -291,8 +291,17 @@ export const rateSubmission = mutation({
     }
 
     if (
-      !validateStarCount(args.correctnessStars) ||
-      !validateStarCount(args.creativityStars)
+      args.correctnessStars === undefined &&
+      args.creativityStars === undefined
+    ) {
+      throw new Error("At least one star rating must be provided.");
+    }
+
+    if (
+      (args.correctnessStars !== undefined &&
+        !validateStarCount(args.correctnessStars)) ||
+      (args.creativityStars !== undefined &&
+        !validateStarCount(args.creativityStars))
     ) {
       throw new Error("Stars must be integers between 0 and 5.");
     }
@@ -304,29 +313,96 @@ export const rateSubmission = mutation({
     }
 
     const now = Date.now();
-    await ctx.db.patch(submission._id, {
-      correctnessStars: args.correctnessStars,
-      creativityStars: args.creativityStars,
-      totalScore: args.correctnessStars + args.creativityStars,
-      judgedAt: now,
-    });
 
-    const submissions = await listRoundSubmissions(ctx, round._id);
-    const allJudged = submissions.every(
-      (currentSubmission) =>
-        currentSubmission.correctnessStars !== undefined &&
-        currentSubmission.creativityStars !== undefined,
-    );
+    const nextCorrectnessStars =
+      args.correctnessStars ?? submission.correctnessStars;
+    const nextCreativityStars =
+      args.creativityStars ?? submission.creativityStars;
 
-    if (allJudged) {
-      await moveRoundToPresent(ctx, round, now);
+    const patch: Partial<{
+      correctnessStars: number;
+      creativityStars: number;
+      totalScore: number;
+      judgedAt: number;
+    }> = {};
+
+    if (args.correctnessStars !== undefined) {
+      patch.correctnessStars = args.correctnessStars;
     }
+
+    if (args.creativityStars !== undefined) {
+      patch.creativityStars = args.creativityStars;
+    }
+
+    if (
+      nextCorrectnessStars !== undefined &&
+      nextCreativityStars !== undefined
+    ) {
+      patch.totalScore = nextCorrectnessStars + nextCreativityStars;
+      patch.judgedAt = now;
+    }
+
+    await ctx.db.patch(submission._id, patch);
 
     return {
       lobbyId: args.lobbyId,
       submissionId: submission._id,
-      stage: allJudged ? ("Present" as const) : ("Judge" as const),
+      stage: "Judge" as const,
+      isComplete:
+        nextCorrectnessStars !== undefined && nextCreativityStars !== undefined,
     };
+  },
+});
+
+export const advanceToPresent = mutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await requireTextGameMembership(ctx, args.lobbyId);
+    const session = await getActiveSession(ctx, args.lobbyId);
+
+    if (session === null || session.status !== "InProgress") {
+      throw new Error("The text game is not currently running.");
+    }
+
+    const round = await getCurrentRound(
+      ctx,
+      session._id,
+      session.currentRoundNumber,
+    );
+
+    if (round === null) {
+      throw new Error("The current text-game round could not be found.");
+    }
+
+    if (round.stage === "Present") {
+      return { lobbyId: args.lobbyId, stage: "Present" as const };
+    }
+
+    if (round.stage !== "Judge") {
+      throw new Error("Rounds can only advance to results during Judge.");
+    }
+
+    if (membership.player._id !== round.targetPlayerId) {
+      throw new Error("Only the selected player can advance this round.");
+    }
+
+    const submissions = await listRoundSubmissions(ctx, round._id);
+    const allRated = submissions.every(
+      (submission) =>
+        submission.correctnessStars !== undefined &&
+        submission.creativityStars !== undefined,
+    );
+
+    if (!allRated) {
+      
+    }
+
+    const now = Date.now();
+    await moveRoundToPresent(ctx, round, now);
+
+    return { lobbyId: args.lobbyId, stage: "Present" as const };
   },
 });
 

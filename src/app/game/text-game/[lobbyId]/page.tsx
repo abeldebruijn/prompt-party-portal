@@ -5,7 +5,9 @@ import type { FunctionReturnType } from "convex/server";
 import {
   ChevronLeft,
   Loader2Icon,
+  RefreshCcw,
   StarIcon,
+  StarOff,
   TrophyIcon,
   UsersIcon,
 } from "lucide-react";
@@ -215,7 +217,10 @@ function Leaderboard({
     <div className="grid gap-3 relative">
       <AnimatePresence>
         {leaderboard.map((entry) => (
-          <LeaderboardItem key={entry.playerId ?? entry.displayName} entry={entry} />
+          <LeaderboardItem
+            key={entry.playerId ?? entry.displayName}
+            entry={entry}
+          />
         ))}
       </AnimatePresence>
     </div>
@@ -226,27 +231,63 @@ function RatingSelector({
   label,
   value,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: number | null;
   onChange: (value: number) => void;
+  disabled?: boolean;
 }) {
   const [hoverValue, setHoverValue] = useState<number | null>(null);
 
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-foreground/80">{label}</p>
+
       {/* biome-ignore lint/a11y/noStaticElementInteractions: Used for visual hover state only */}
-      <div className="flex gap-1" onMouseLeave={() => setHoverValue(null)}>
+      <div
+        className="flex gap-1 items-center"
+        onMouseLeave={() => setHoverValue(null)}
+      >
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(0)}
+          onMouseEnter={() => setHoverValue(0)}
+          className={cn(
+            "group relative rounded-full p-2 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+            disabled
+              ? "cursor-not-allowed opacity-60"
+              : "hover:scale-110 active:scale-95",
+          )}
+        >
+          <StarOff
+            className={cn(
+              "size-5 transition-all duration-300",
+              value === 0
+                ? "fill-primary text-primary"
+                : "fill-transparent text-foreground/20 group-hover:text-primary/30",
+            )}
+          />
+        </button>
+
+        <div className="w-0.5 h-6 mx-2 rounded-full bg-foreground/20"></div>
+
         {Array.from({ length: 5 }, (_, i) => i + 1).map((option) => {
           const isFilled = (hoverValue ?? value ?? 0) >= option;
           return (
             <button
               key={option}
               type="button"
+              disabled={disabled}
               onClick={() => onChange(option)}
               onMouseEnter={() => setHoverValue(option)}
-              className="group relative rounded-full p-1.5 transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              className={cn(
+                "group relative rounded-full p-1.5 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                disabled
+                  ? "cursor-not-allowed opacity-60"
+                  : "hover:scale-110 active:scale-95",
+              )}
             >
               <StarIcon
                 className={cn(
@@ -400,12 +441,14 @@ function JudgeStage({
   isJudge,
   pendingAction,
   runAction,
+  reportError,
 }: {
   snapshot: ActiveGameState;
   lobbyId: Id<"lobbies">;
   isJudge: boolean;
   pendingAction: string | null;
   runAction: (actionKey: string, operation: () => Promise<void>) => void;
+  reportError: (message: string) => void;
 }) {
   const [ratingDrafts, setRatingDrafts] = useState<
     Record<
@@ -413,7 +456,12 @@ function JudgeStage({
       { correctnessStars: number | null; creativityStars: number | null }
     >
   >({});
+  const savingBySubmissionIdRef = useRef<Record<string, boolean>>({});
+  const [savingBySubmissionId, setSavingBySubmissionId] = useState<
+    Record<string, boolean>
+  >({});
   const rateSubmission = useMutation(api.textGame.rateSubmission);
+  const advanceToPresent = useMutation(api.textGame.advanceToPresent);
 
   useEffect(() => {
     if (!snapshot.round.judgeSubmissions.length) {
@@ -434,6 +482,64 @@ function JudgeStage({
     });
   }, [snapshot.round.judgeSubmissions]);
 
+  const allSubmissionsRated = useMemo(
+    () =>
+      snapshot.round.judgeSubmissions.every(
+        (submission) =>
+          submission.correctnessStars !== null &&
+          submission.creativityStars !== null,
+      ),
+    [snapshot.round.judgeSubmissions],
+  );
+
+  const hasPendingSave = useMemo(
+    () => Object.values(savingBySubmissionId).some(Boolean),
+    [savingBySubmissionId],
+  );
+
+  async function saveSubmissionRating(
+    submissionId: string,
+    update: { correctnessStars?: number; creativityStars?: number },
+    previous: {
+      correctnessStars: number | null;
+      creativityStars: number | null;
+    },
+  ) {
+    if (savingBySubmissionIdRef.current[submissionId]) {
+      return;
+    }
+
+    savingBySubmissionIdRef.current[submissionId] = true;
+    setSavingBySubmissionId((current) => ({
+      ...current,
+      [submissionId]: true,
+    }));
+
+    try {
+      await rateSubmission({
+        lobbyId,
+        submissionId: submissionId as Id<"textGameSubmissions">,
+        ...update,
+      });
+    } catch (error) {
+      reportError(
+        error instanceof Error
+          ? error.message
+          : "That rating could not be saved.",
+      );
+      setRatingDrafts((current) => ({
+        ...current,
+        [submissionId]: previous,
+      }));
+    } finally {
+      savingBySubmissionIdRef.current[submissionId] = false;
+      setSavingBySubmissionId((current) => ({
+        ...current,
+        [submissionId]: false,
+      }));
+    }
+  }
+
   return (
     <div className="mt-6 border-t border-foreground/10 pt-6">
       {isJudge ? (
@@ -443,74 +549,103 @@ function JudgeStage({
               correctnessStars: submission.correctnessStars,
               creativityStars: submission.creativityStars,
             };
+            const isSaving = Boolean(
+              savingBySubmissionId[submission.submissionId],
+            );
 
             return (
               <div
                 key={submission.submissionId}
-                className="rounded-3xl border border-foreground/10 bg-background/75 p-5"
+                className="relative rounded-3xl border border-foreground/10 bg-background/75 p-5"
               >
+                {isSaving ? (
+                  <div className="absolute right-4 top-4 text-foreground/60">
+                    <Loader2Icon className="size-4 animate-spin" />
+                    <span className="sr-only">Saving...</span>
+                  </div>
+                ) : null}
                 <p className="mt-3 text-base leading-7 text-foreground">
                   {submission.answer}
                 </p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <RatingSelector
                     label="Correctness"
-                    onChange={(value) =>
+                    onChange={(value) => {
+                      const previous = draft;
+                      const nextDraft = {
+                        ...draft,
+                        correctnessStars: value,
+                      };
                       setRatingDrafts((current) => ({
                         ...current,
-                        [submission.submissionId]: {
-                          ...draft,
-                          correctnessStars: value,
-                        },
-                      }))
-                    }
+                        [submission.submissionId]: nextDraft,
+                      }));
+                      saveSubmissionRating(
+                        submission.submissionId,
+                        { correctnessStars: value },
+                        previous,
+                      );
+                    }}
                     value={draft.correctnessStars}
+                    disabled={isSaving}
                   />
                   <RatingSelector
                     label="Creativity"
-                    onChange={(value) =>
+                    onChange={(value) => {
+                      const previous = draft;
+                      const nextDraft = {
+                        ...draft,
+                        creativityStars: value,
+                      };
                       setRatingDrafts((current) => ({
                         ...current,
-                        [submission.submissionId]: {
-                          ...draft,
-                          creativityStars: value,
-                        },
-                      }))
-                    }
+                        [submission.submissionId]: nextDraft,
+                      }));
+                      saveSubmissionRating(
+                        submission.submissionId,
+                        { creativityStars: value },
+                        previous,
+                      );
+                    }}
                     value={draft.creativityStars}
+                    disabled={isSaving}
                   />
                 </div>
-                <Button
-                  className="mt-5 rounded-full px-6"
-                  disabled={
-                    pendingAction === submission.submissionId ||
-                    draft.correctnessStars === null ||
-                    draft.creativityStars === null
-                  }
-                  onClick={() =>
-                    void runAction(submission.submissionId, async () => {
-                      await rateSubmission({
-                        lobbyId,
-                        submissionId: submission.submissionId,
-                        correctnessStars: draft.correctnessStars ?? 0,
-                        creativityStars: draft.creativityStars ?? 0,
-                      });
-                    })
-                  }
-                  type="button"
-                >
-                  {pendingAction === submission.submissionId ? (
-                    <>
-                      <Loader2Icon className="size-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save rating"
-                  )}
-                </Button>
               </div>
             );
           })}
+
+          <div className="mt-4 flex items-center justify-end gap-4">
+            {!allSubmissionsRated && (
+              <p className="text-sm text-foreground/60">
+                Please rate all submissions before continuing
+              </p>
+            )}
+
+            <Button
+              className="rounded-full px-6"
+              disabled={
+                !allSubmissionsRated ||
+                hasPendingSave ||
+                pendingAction === "advanceToPresent"
+              }
+              onClick={() =>
+                void runAction("advanceToPresent", async () => {
+                  await advanceToPresent({ lobbyId });
+                })
+              }
+              type="button"
+            >
+              {pendingAction === "advanceToPresent" ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Continuing...
+                </>
+              ) : (
+                "Continue to next round"
+              )}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="mt-6 flex flex-col items-center justify-center space-y-4 rounded-3xl border border-foreground/10 bg-background/50 px-5 py-10 text-center">
@@ -518,7 +653,10 @@ function JudgeStage({
             <Loader2Icon className="size-5 animate-spin" />
             <span className="font-medium">Scoring in progress</span>
           </div>
-          <p className="max-w-[300px] text-sm leading-6 text-foreground/70">
+
+          <Leaderboard leaderboard={snapshot.leaderboard} />
+
+          <p className="max-w-[300px] text-sm leading-6 text-foreground/70 text-balance">
             <strong className="font-medium text-foreground">
               {snapshot.round.targetPlayer?.displayName}
             </strong>{" "}
@@ -700,7 +838,10 @@ export default function TextGamePage() {
   const isJudge = snapshot.viewer.role === "Judge";
 
   // If round is the last round show component for final results
-  if (snapshot.round.roundNumber === snapshot.session.roundCount) {
+  if (
+    snapshot.round.roundNumber >= snapshot.session.roundCount &&
+    snapshot.round.stage === "Present"
+  ) {
     return (
       <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
         <SurfaceCard>
@@ -719,9 +860,17 @@ export default function TextGamePage() {
             className="mt-6 rounded-full px-6"
             onClick={() => resetLobby({ lobbyId })}
           >
+            <RefreshCcw className="size-4" />
             Reset lobby
           </Button>
-        ) : null}
+        ) : (
+          <Link href="/">
+            <Button className="mt-6 rounded-full px-6">
+              <ChevronLeft className="size-4" />
+              Back to home
+            </Button>
+          </Link>
+        )}
       </main>
     );
   }
@@ -769,6 +918,7 @@ export default function TextGamePage() {
                 isJudge={isJudge}
                 lobbyId={lobbyId}
                 pendingAction={pendingAction}
+                reportError={(message) => setActionError(message)}
                 runAction={runAction}
                 snapshot={snapshot as ActiveGameState}
               />
@@ -798,15 +948,17 @@ export default function TextGamePage() {
             </div>
           </SurfaceCard>
 
-          <SurfaceCard>
-            <SurfaceCardTitle className="text-2xl">
-              <TrophyIcon className="size-5 text-primary" />
-              Leaderboard
-            </SurfaceCardTitle>
-            <div className="mt-6">
-              <Leaderboard leaderboard={snapshot.leaderboard} />
-            </div>
-          </SurfaceCard>
+          {snapshot.round.stage !== "Judge" && (
+            <SurfaceCard>
+              <SurfaceCardTitle className="text-2xl">
+                <TrophyIcon className="size-5 text-primary" />
+                Leaderboard
+              </SurfaceCardTitle>
+              <div className="mt-6">
+                <Leaderboard leaderboard={snapshot.leaderboard} />
+              </div>
+            </SurfaceCard>
+          )}
 
           {snapshot.lobby.state === "Completion" ? (
             <SurfaceCard>

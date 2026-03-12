@@ -1,6 +1,7 @@
 export {
   advanceAfterPresent,
   advanceToJudge,
+  advanceToPresent,
   rateSubmission,
   startGame,
   submitAnswer,
