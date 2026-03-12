@@ -296,7 +296,9 @@ export default function LobbyRoomPage() {
   const completeLobby = useMutation(api.lobbies.completeLobby);
   const resetLobby = useMutation(api.lobbies.resetLobby);
   const updateTextGameSettings = useMutation(api.textGame.updateSettings);
+  const updateImageGameSettings = useMutation(api.imageGame.updateSettings);
   const startTextGame = useMutation(api.textGame.startGame);
+  const startImageGame = useMutation(api.imageGame.startGame);
 
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -338,7 +340,10 @@ export default function LobbyRoomPage() {
   }, [viewerPlayer]);
 
   useEffect(() => {
-    if (snapshot?.lobby.selectedGame === "Pick text that suits a situation") {
+    if (
+      snapshot?.lobby.selectedGame === "Pick text that suits a situation" ||
+      snapshot?.lobby.selectedGame === "Pick image that suits a situation"
+    ) {
       setTextGameRoundCountDraft(String(snapshot.lobby.textGameRoundCount));
     }
   }, [snapshot?.lobby.selectedGame, snapshot?.lobby.textGameRoundCount]);
@@ -349,6 +354,15 @@ export default function LobbyRoomPage() {
       snapshot.lobby.state !== "Creation"
     ) {
       router.replace(`/game/text-game/${lobbyId}`);
+    }
+  }, [lobbyId, router, snapshot?.lobby.selectedGame, snapshot?.lobby.state]);
+
+  useEffect(() => {
+    if (
+      snapshot?.lobby.selectedGame === "Pick image that suits a situation" &&
+      snapshot.lobby.state !== "Creation"
+    ) {
+      router.replace(`/game/image-game/${lobbyId}`);
     }
   }, [lobbyId, router, snapshot?.lobby.selectedGame, snapshot?.lobby.state]);
 
@@ -409,6 +423,8 @@ export default function LobbyRoomPage() {
   const canKickPlayers = isHost && snapshot.lobby.state === "Creation";
   const isTextGame =
     snapshot.lobby.selectedGame === "Pick text that suits a situation";
+  const isImageGame =
+    snapshot.lobby.selectedGame === "Pick image that suits a situation";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
@@ -538,6 +554,51 @@ export default function LobbyRoomPage() {
                           </Button>
                         </div>
                       </label>
+                    ) : isImageGame ? (
+                      <label
+                        className="block max-w-xs space-y-2"
+                        htmlFor="image-game-round-count"
+                      >
+                        <span className="text-sm font-medium text-foreground/80">
+                          Image game rounds
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <LobbyInput
+                            id="image-game-round-count"
+                            inputMode="numeric"
+                            onChange={(event) =>
+                              setTextGameRoundCountDraft(event.target.value)
+                            }
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={textGameRoundCountDraft}
+                          />
+                          <Button
+                            className="rounded-full px-5"
+                            disabled={pendingAction === "image-settings"}
+                            onClick={() =>
+                              void runAction("image-settings", async () => {
+                                await updateImageGameSettings({
+                                  lobbyId,
+                                  roundCount: Number(textGameRoundCountDraft),
+                                });
+                              })
+                            }
+                            type="button"
+                            variant="outline"
+                          >
+                            {pendingAction === "image-settings" ? (
+                              <>
+                                <Loader2Icon className="size-4 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              "Save"
+                            )}
+                          </Button>
+                        </div>
+                      </label>
                     ) : null}
 
                     <Button
@@ -547,6 +608,11 @@ export default function LobbyRoomPage() {
                         void runAction("start", async () => {
                           if (isTextGame) {
                             await startTextGame({ lobbyId });
+                            return;
+                          }
+
+                          if (isImageGame) {
+                            await startImageGame({ lobbyId });
                             return;
                           }
 
@@ -561,6 +627,8 @@ export default function LobbyRoomPage() {
                         </>
                       ) : isTextGame ? (
                         "Start text game"
+                      ) : isImageGame ? (
+                        "Start image game"
                       ) : (
                         "Start round"
                       )}

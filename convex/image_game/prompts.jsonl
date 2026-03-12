@@ -1,0 +1,20 @@
+{"slug":"sport-for-person","template":"A sport that {person} would be good in","order":1,"isActive":true}
+{"slug":"favourite-dish-of-person","template":"Favourite dish of {person}","order":2,"isActive":true}
+{"slug":"planet-person-would-visit","template":"Planet {person} would visit","order":3,"isActive":true}
+{"slug":"historical-era-person-would-love","template":"A historical era {person} would love to live in","order":4,"isActive":true}
+{"slug":"super-power-person-would-choose","template":"A super-power {person} would choose to have","order":5,"isActive":true}
+{"slug":"holiday-destination-for-person","template":"A favorite holiday destination for {person}","order":6,"isActive":true}
+{"slug":"dream-job-for-person","template":"A dream job {person} would pursue if money weren't an issue","order":7,"isActive":true}
+{"slug":"vehicle-person-would-love","template":"A type of vehicle {person} would love to drive","order":8,"isActive":true}
+{"slug":"retirement-hobby-for-person","template":"A hobby {person} would pick up during retirement","order":9,"isActive":true}
+{"slug":"mythical-creature-companion","template":"A mythical creature {person} would keep as a companion","order":10,"isActive":true}
+{"slug":"favorite-art-type-for-person","template":"A favorite type of art {person} would create or appreciate","order":11,"isActive":true}
+{"slug":"supervillain-comparison","template":"A supervillain {person} could be compared to","order":12,"isActive":true}
+{"slug":"transport-invention-for-person","template":"A form of transportation {person} would invent","order":13,"isActive":true}
+{"slug":"scientific-discovery-for-person","template":"A scientific discovery {person} would want to make","order":14,"isActive":true}
+{"slug":"architecture-style-for-person","template":"A type of architecture {person} would design","order":15,"isActive":true}
+{"slug":"business-idea-for-person","template":"A business idea {person} would want to launch","order":16,"isActive":true}
+{"slug":"if-person-won-the-lottery","template":"If {person} won the lottery, they would...","order":17,"isActive":true}
+{"slug":"if-person-had-unlimited-time","template":"If {person} had unlimited time, they would spend it on...","order":18,"isActive":true}
+{"slug":"if-person-could-change-world","template":"If {person} could change one thing about the world, they would...","order":19,"isActive":true}
+{"slug":"if-person-taught-masterclass","template":"If {person} had to teach a masterclass on something, they would teach...","order":20,"isActive":true}
