@@ -18,6 +18,11 @@ import type * as lobbies_helpers from "../lobbies/helpers.js";
 import type * as lobbies_mutations from "../lobbies/mutations.js";
 import type * as lobbies_queries from "../lobbies/queries.js";
 import type * as lobbies_types from "../lobbies/types.js";
+import type * as textGame from "../textGame.js";
+import type * as text_game_constants from "../text_game/constants.js";
+import type * as text_game_helpers from "../text_game/helpers.js";
+import type * as text_game_mutations from "../text_game/mutations.js";
+import type * as text_game_queries from "../text_game/queries.js";
 import type * as userEmailChange from "../userEmailChange.js";
 import type * as users from "../users.js";
 
@@ -38,6 +43,11 @@ declare const fullApi: ApiFromModules<{
   "lobbies/mutations": typeof lobbies_mutations;
   "lobbies/queries": typeof lobbies_queries;
   "lobbies/types": typeof lobbies_types;
+  textGame: typeof textGame;
+  "text_game/constants": typeof text_game_constants;
+  "text_game/helpers": typeof text_game_helpers;
+  "text_game/mutations": typeof text_game_mutations;
+  "text_game/queries": typeof text_game_queries;
   userEmailChange: typeof userEmailChange;
   users: typeof users;
 }>;

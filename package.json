@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "convex:import:text-prompts": "bunx convex import --table textGamePrompts convex/text_game/prompts.jsonl",
+    "check": "tsc --noEmit",
     "lint": "biome check",
     "format": "biome format --write",
     "test": "vitest",

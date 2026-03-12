@@ -8,6 +8,7 @@ import {
 } from "../lib/auth";
 import {
   aiPersonalityTypeValidator,
+  DEFAULT_TEXT_GAME_ROUND_COUNT,
   generateFunnyUsername,
   lobbyGameValidator,
   PLACEHOLDER_GAMES,
@@ -46,6 +47,7 @@ export const createLobby = mutation({
       hostUserId: viewer._id,
       selectedGame: args.selectedGame ?? PLACEHOLDER_GAMES[0],
       state: "Creation",
+      textGameRoundCount: DEFAULT_TEXT_GAME_ROUND_COUNT,
       currentRound: 0,
       lastActivityAt: now,
     });
@@ -410,8 +412,31 @@ export const resetLobby = mutation({
       .query("lobbyGameVotes")
       .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
       .collect();
+    const sessions = await ctx.db
+      .query("textGameSessions")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const rounds = await ctx.db
+      .query("textGameRounds")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const submissions = (
+      await Promise.all(
+        rounds.map((round) =>
+          ctx.db
+            .query("textGameSubmissions")
+            .withIndex("roundId", (query) => query.eq("roundId", round._id))
+            .collect(),
+        ),
+      )
+    ).flat();
 
     await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
+    await Promise.all(
+      submissions.map((submission) => ctx.db.delete(submission._id)),
+    );
+    await Promise.all(rounds.map((round) => ctx.db.delete(round._id)));
+    await Promise.all(sessions.map((session) => ctx.db.delete(session._id)));
 
     await ctx.db.patch(lobby._id, {
       state: "Creation",

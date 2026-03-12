@@ -66,14 +66,21 @@ async function createLobbyFixture(t: TestBackend) {
 describe("convex/lobbies", () => {
   it("covers the main lobby lifecycle and important side effects", async () => {
     const t = createConvexTest();
-    const { host, lobbyId, playerId: hostPlayerId, joinCode } =
-      await createLobbyFixture(t);
+    const {
+      host,
+      lobbyId,
+      playerId: hostPlayerId,
+      joinCode,
+    } = await createLobbyFixture(t);
     const alice = await createViewer(t, { name: "  Alice   Example  " });
     const bob = await createViewer(t, { name: "Bob Example" });
 
-    const hostLobbyByCode = await host.client.query(api.lobbies.getLobbyByCode, {
-      joinCode: ` ${joinCode.toLowerCase()} `,
-    });
+    const hostLobbyByCode = await host.client.query(
+      api.lobbies.getLobbyByCode,
+      {
+        joinCode: ` ${joinCode.toLowerCase()} `,
+      },
+    );
 
     expect(hostLobbyByCode).toMatchObject({
       lobbyId,
@@ -136,11 +143,9 @@ describe("convex/lobbies", () => {
       state: "Creation",
       activePlayerCount: 3,
     });
-    expect(creationSnapshot.players.map((player) => player.displayName)).toEqual([
-      "Host Person",
-      "Alice Example",
-      "Bot Prime",
-    ]);
+    expect(
+      creationSnapshot.players.map((player) => player.displayName),
+    ).toEqual(["Host Person", "Alice Example", "Bot Prime"]);
     expect(creationSnapshot.votes).toHaveLength(1);
     expect(creationSnapshot.votes[0]).toMatchObject({
       playerId: aliceJoin.playerId,
@@ -232,10 +237,14 @@ describe("convex/lobbies", () => {
     expect(dbStateAfterCompletion.completionRecord?._id).toBe(
       completion.completionId,
     );
-    expect(dbStateAfterCompletion.completionRecord?.leaderboard).toHaveLength(3);
+    expect(dbStateAfterCompletion.completionRecord?.leaderboard).toHaveLength(
+      3,
+    );
 
     await host.client.mutation(api.lobbies.resetLobby, { lobbyId });
-    const resetSnapshot = await host.client.query(api.lobbies.getLobby, { lobbyId });
+    const resetSnapshot = await host.client.query(api.lobbies.getLobby, {
+      lobbyId,
+    });
     const dbStateAfterReset = await t.run(async (ctx) => {
       const lobby = await ctx.db.get(lobbyId);
       const votes = await ctx.db
@@ -271,10 +280,16 @@ describe("convex/lobbies", () => {
       hasPasswordAccount: true,
     });
 
-    const ownerCreated = await owner.client.mutation(api.lobbies.createLobby, {});
-    const otherCreated = await otherHost.client.mutation(api.lobbies.createLobby, {
-      selectedGame: GAME_TWO,
-    });
+    const ownerCreated = await owner.client.mutation(
+      api.lobbies.createLobby,
+      {},
+    );
+    const otherCreated = await otherHost.client.mutation(
+      api.lobbies.createLobby,
+      {
+        selectedGame: GAME_TWO,
+      },
+    );
     await owner.client.mutation(api.lobbies.joinLobbyByCode, {
       joinCode: otherCreated.joinCode,
     });
@@ -325,7 +340,10 @@ describe("convex/lobbies", () => {
     });
 
     await expect(
-      member.client.mutation(api.lobbies.selectGame, { lobbyId, game: GAME_TWO }),
+      member.client.mutation(api.lobbies.selectGame, {
+        lobbyId,
+        game: GAME_TWO,
+      }),
     ).rejects.toThrow("Only the lobby host can do that.");
     await expect(
       member.client.mutation(api.lobbies.addAiPlayer, {
@@ -363,17 +381,28 @@ describe("convex/lobbies", () => {
       outsider.client.query(api.lobbies.getLobby, { lobbyId }),
     ).rejects.toThrow("You must be an active player in this lobby.");
     await expect(
-      outsider.client.mutation(api.lobbies.voteForGame, { lobbyId, game: GAME_TWO }),
+      outsider.client.mutation(api.lobbies.voteForGame, {
+        lobbyId,
+        game: GAME_TWO,
+      }),
     ).rejects.toThrow("You must be an active player in this lobby.");
     await expect(
-      host.client.mutation(api.lobbies.voteForGame, { lobbyId, game: GAME_TWO }),
-    ).rejects.toThrow("Hosts choose the active game directly instead of voting.");
+      host.client.mutation(api.lobbies.voteForGame, {
+        lobbyId,
+        game: GAME_TWO,
+      }),
+    ).rejects.toThrow(
+      "Hosts choose the active game directly instead of voting.",
+    );
 
     await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
     await host.client.mutation(api.lobbies.startRound, { lobbyId });
 
     await expect(
-      member.client.mutation(api.lobbies.voteForGame, { lobbyId, game: GAME_TWO }),
+      member.client.mutation(api.lobbies.voteForGame, {
+        lobbyId,
+        game: GAME_TWO,
+      }),
     ).rejects.toThrow("Game votes are only advisory during lobby setup.");
     await expect(
       host.client.mutation(api.lobbies.selectGame, { lobbyId, game: GAME_TWO }),
@@ -385,22 +414,31 @@ describe("convex/lobbies", () => {
         lobbyId,
         personalityType: "complimenting",
       }),
-    ).rejects.toThrow("AI players can only be added before the session starts.");
+    ).rejects.toThrow(
+      "AI players can only be added before the session starts.",
+    );
   });
 
   it("guards joining, kicking, starting, and resetting in invalid states", async () => {
     const t = createConvexTest();
-    const { host, lobbyId, joinCode, playerId: hostPlayerId } =
-      await createLobbyFixture(t);
+    const {
+      host,
+      lobbyId,
+      joinCode,
+      playerId: hostPlayerId,
+    } = await createLobbyFixture(t);
     const member = await createViewer(t, { name: "Member" });
     const otherLobby = await createLobbyFixture(t);
 
     const joined = await member.client.mutation(api.lobbies.joinLobbyByCode, {
       joinCode,
     });
-    const joinedAgain = await member.client.mutation(api.lobbies.joinLobbyByCode, {
-      joinCode,
-    });
+    const joinedAgain = await member.client.mutation(
+      api.lobbies.joinLobbyByCode,
+      {
+        joinCode,
+      },
+    );
 
     expect(joinedAgain).toMatchObject({
       lobbyId,
@@ -440,7 +478,9 @@ describe("convex/lobbies", () => {
       soloLobby.host.client.mutation(api.lobbies.startRound, {
         lobbyId: soloLobby.lobbyId,
       }),
-    ).rejects.toThrow("At least two active players are required to start a round.");
+    ).rejects.toThrow(
+      "At least two active players are required to start a round.",
+    );
     await expect(
       host.client.mutation(api.lobbies.resetLobby, { lobbyId }),
     ).rejects.toThrow("Only a completed lobby can be reset.");
@@ -462,7 +502,9 @@ describe("convex/lobbies", () => {
         lobbyId: firstLobby.lobbyId,
         leaderboard: [],
       }),
-    ).rejects.toThrow("Completion results need at least one leaderboard entry.");
+    ).rejects.toThrow(
+      "Completion results need at least one leaderboard entry.",
+    );
 
     const secondLobby = await createLobbyFixture(t);
     const secondMember = await createViewer(t, { name: "Second Member" });
@@ -489,17 +531,20 @@ describe("convex/lobbies", () => {
       "Leaderboard entries must reference players from the same lobby.",
     );
 
-    const completed = await firstLobby.host.client.mutation(api.lobbies.completeLobby, {
-      lobbyId: firstLobby.lobbyId,
-      leaderboard: [
-        {
-          playerId: firstLobby.playerId,
-          displayName: "Host",
-          rank: 1,
-          score: 10,
-        },
-      ],
-    });
+    const completed = await firstLobby.host.client.mutation(
+      api.lobbies.completeLobby,
+      {
+        lobbyId: firstLobby.lobbyId,
+        leaderboard: [
+          {
+            playerId: firstLobby.playerId,
+            displayName: "Host",
+            rank: 1,
+            score: 10,
+          },
+        ],
+      },
+    );
     const outsider = await createViewer(t, { name: "Late Joiner" });
 
     expect(completed.state).toBe("Completion");

@@ -15,7 +15,7 @@ import {
   UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import type * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -281,6 +281,7 @@ function GameVoteGrid({
 export default function LobbyRoomPage() {
   const params = useParams<{ lobbyId: string }>();
   const { isAuthenticated, isLoading } = useConvexAuth();
+  const router = useRouter();
   const lobbyId = params.lobbyId as Id<"lobbies">;
   const snapshot = useQuery(
     api.lobbies.getLobby,
@@ -294,6 +295,8 @@ export default function LobbyRoomPage() {
   const startRound = useMutation(api.lobbies.startRound);
   const completeLobby = useMutation(api.lobbies.completeLobby);
   const resetLobby = useMutation(api.lobbies.resetLobby);
+  const updateTextGameSettings = useMutation(api.textGame.updateSettings);
+  const startTextGame = useMutation(api.textGame.startGame);
 
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -304,6 +307,7 @@ export default function LobbyRoomPage() {
   const [completionSummary, setCompletionSummary] = useState(
     "Round results are in — celebrate and reset for another lobby setup.",
   );
+  const [textGameRoundCountDraft, setTextGameRoundCountDraft] = useState("10");
   const confettiCompletionId = useRef<string | null>(null);
 
   const viewerPlayer = useMemo(() => {
@@ -335,6 +339,12 @@ export default function LobbyRoomPage() {
   }, [viewerPlayer]);
 
   useEffect(() => {
+    if (snapshot?.lobby.selectedGame === "Pick text that suits a situation") {
+      setTextGameRoundCountDraft(String(snapshot.lobby.textGameRoundCount));
+    }
+  }, [snapshot?.lobby.selectedGame, snapshot?.lobby.textGameRoundCount]);
+
+  useEffect(() => {
     if (
       !snapshot?.completion?._id ||
       confettiCompletionId.current === snapshot.completion._id
@@ -359,6 +369,15 @@ export default function LobbyRoomPage() {
       });
     });
   }, [snapshot?.completion?._id]);
+
+  useEffect(() => {
+    if (
+      snapshot?.lobby.selectedGame === "Pick text that suits a situation" &&
+      snapshot.lobby.state !== "Creation"
+    ) {
+      router.replace(`/game/text-game/${lobbyId}`);
+    }
+  }, [lobbyId, router, snapshot?.lobby.selectedGame, snapshot?.lobby.state]);
 
   async function runAction(actionKey: string, operation: () => Promise<void>) {
     setPendingAction(actionKey);
@@ -415,6 +434,8 @@ export default function LobbyRoomPage() {
 
   const isHost = snapshot.viewer.isHost;
   const canKickPlayers = isHost && snapshot.lobby.state === "Creation";
+  const isTextGame =
+    snapshot.lobby.selectedGame === "Pick text that suits a situation";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
@@ -533,24 +554,80 @@ export default function LobbyRoomPage() {
                 />
 
                 {isHost ? (
-                  <Button
-                    className="rounded-full px-6"
-                    disabled={pendingAction === "start"}
-                    onClick={() =>
-                      void runAction("start", async () => {
-                        await startRound({ lobbyId });
-                      })
-                    }
-                  >
-                    {pendingAction === "start" ? (
-                      <>
-                        <Loader2Icon className="size-4 animate-spin" />
-                        Starting...
-                      </>
-                    ) : (
-                      "Start round"
-                    )}
-                  </Button>
+                  <div className="space-y-4">
+                    {isTextGame ? (
+                      <label
+                        className="block max-w-xs space-y-2"
+                        htmlFor="text-game-round-count"
+                      >
+                        <span className="text-sm font-medium text-foreground/80">
+                          Text game rounds
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <LobbyInput
+                            id="text-game-round-count"
+                            inputMode="numeric"
+                            onChange={(event) =>
+                              setTextGameRoundCountDraft(event.target.value)
+                            }
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={textGameRoundCountDraft}
+                          />
+                          <Button
+                            className="rounded-full px-5"
+                            disabled={pendingAction === "text-settings"}
+                            onClick={() =>
+                              void runAction("text-settings", async () => {
+                                await updateTextGameSettings({
+                                  lobbyId,
+                                  roundCount: Number(textGameRoundCountDraft),
+                                });
+                              })
+                            }
+                            type="button"
+                            variant="outline"
+                          >
+                            {pendingAction === "text-settings" ? (
+                              <>
+                                <Loader2Icon className="size-4 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              "Save"
+                            )}
+                          </Button>
+                        </div>
+                      </label>
+                    ) : null}
+
+                    <Button
+                      className="rounded-full px-6"
+                      disabled={pendingAction === "start"}
+                      onClick={() =>
+                        void runAction("start", async () => {
+                          if (isTextGame) {
+                            await startTextGame({ lobbyId });
+                            return;
+                          }
+
+                          await startRound({ lobbyId });
+                        })
+                      }
+                    >
+                      {pendingAction === "start" ? (
+                        <>
+                          <Loader2Icon className="size-4 animate-spin" />
+                          Starting...
+                        </>
+                      ) : isTextGame ? (
+                        "Start text game"
+                      ) : (
+                        "Start round"
+                      )}
+                    </Button>
+                  </div>
                 ) : null}
               </div>
             ) : null}
