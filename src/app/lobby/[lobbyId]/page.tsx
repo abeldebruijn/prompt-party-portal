@@ -427,49 +427,15 @@ export default function LobbyRoomPage() {
         <div className="space-y-6">
           <SurfaceCard>
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                asChild
-                className="rounded-full"
-                size="sm"
-                variant="outline"
-              >
-                <Link href="/lobby">
-                  <ChevronLeft className="size-4" /> Back to hub
-                </Link>
-              </Button>
+              <span className="text-sm text-foreground/70">Current game:</span>
             </div>
 
-            <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
+            <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <SurfaceCardTitle className="text-3xl sm:text-4xl">
                   {snapshot.lobby.selectedGame}
                 </SurfaceCardTitle>
               </div>
-
-              <div className="flex flex-wrap items-stretch gap-4">
-                <div className="rounded-3xl border border-foreground/10 bg-background/70 px-5 py-4 text-right">
-                  <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-                    Active players
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold text-foreground">
-                    {snapshot.lobby.activePlayerCount}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-3 text-xs text-foreground/65 uppercase tracking-[0.18em] font-mono">
-              <span className="rounded-full border border-foreground/12 bg-background/75 px-3 py-2">
-                Round {snapshot.lobby.currentRound}
-              </span>
-              <span className="rounded-full border border-foreground/12 bg-background/75 px-3 py-2">
-                {isHost ? "Host controls enabled" : "Player view"}
-              </span>
-              {viewerPlayer.joinedDuringState === "Playing" ? (
-                <span className="rounded-full border border-foreground/12 bg-background/75 px-3 py-2">
-                  Late joiner
-                </span>
-              ) : null}
             </div>
 
             {actionError ? (
@@ -481,9 +447,6 @@ export default function LobbyRoomPage() {
 
           <SurfaceCard>
             <div>
-              <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-                Live lobby state
-              </p>
               <div className="mt-4 flex items-start gap-3">
                 {snapshot.lobby.state === "Creation" ? (
                   <SparklesIcon className="text-primary size-6" />
@@ -904,21 +867,7 @@ export default function LobbyRoomPage() {
                 </div>
               )}
             </SurfaceCard>
-          ) : (
-            <SurfaceCard>
-              <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-                Player note
-              </p>
-              <SurfaceCardTitle className="mt-4">
-                Your controls depend on the host.
-              </SurfaceCardTitle>
-              <p className="mt-4 text-sm leading-6 text-foreground/75 sm:text-base">
-                During Creation you can vote on the game. In Playing and
-                Completion, you keep a synchronized view of the roster and
-                results but cannot access host-only mutations.
-              </p>
-            </SurfaceCard>
-          )}
+          ) : null}
         </div>
       </section>
     </main>

@@ -404,10 +404,6 @@ export const resetLobby = mutation({
   handler: async (ctx, args) => {
     const { lobby } = await requireLobbyHost(ctx, args.lobbyId);
 
-    if (lobby.state !== "Completion") {
-      throw new Error("Only a completed lobby can be reset.");
-    }
-
     const votes = await ctx.db
       .query("lobbyGameVotes")
       .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
