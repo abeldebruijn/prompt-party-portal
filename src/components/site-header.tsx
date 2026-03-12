@@ -111,7 +111,7 @@ export function SiteHeader() {
                 </button>
               </DropdownMenuTrigger>
 
-              <DropdownMenuContent align="end" className="w-64 rounded-2xl">
+              <DropdownMenuContent align="end" className="w-64 rounded-xl">
                 <DropdownMenuLabel>
                   <p className="truncate text-sm font-semibold">
                     {viewer.username}

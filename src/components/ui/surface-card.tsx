@@ -11,7 +11,7 @@ export function SurfaceCard({
   return (
     <section
       className={cn(
-        "rounded-4xl border-2 border-foreground/10 bg-card/85 p-6 shadow-xl shadow-primary/10 backdrop-blur-sm sm:p-8",
+        "rounded-4xl border-2 border-foreground/10 bg-card/85 p-4 shadow-xl shadow-primary/10 backdrop-blur-sm sm:p-5",
         className,
       )}
     >
@@ -30,7 +30,7 @@ export function SurfaceCardTitle({
   return (
     <h2
       className={cn(
-        "font-display text-4xl leading-none text-foreground",
+        "font-display text-4xl leading-none text-foreground flex items-center gap-3",
         className,
       )}
     >
