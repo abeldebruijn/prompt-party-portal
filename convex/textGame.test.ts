@@ -286,12 +286,15 @@ describe("convex/textGame", () => {
       roundCount: 1,
     });
     await host.client.mutation(api.textGame.startGame, { lobbyId });
-    await host.client.mutation(api.textGame.advanceToJudge, { lobbyId });
+    const transition = await host.client.mutation(api.textGame.advanceToJudge, {
+      lobbyId,
+    });
 
     const presentState = await host.client.query(api.textGame.getGameState, {
       lobbyId,
     });
 
+    expect(transition.transition).toBe("present");
     expect(presentState.round?.stage).toBe("Present");
     expect(presentState.round?.winners).toEqual([]);
 
@@ -311,6 +314,74 @@ describe("convex/textGame", () => {
 
     expect(completionState.lobby.state).toBe("Completion");
     expect(completionState.leaderboard).toHaveLength(2);
+  });
+
+  it("lets the host skip to judge with partial submissions", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode, playerId: hostPlayerId } =
+      await createTextGameLobby(t);
+    const alice = await createViewer(t, { name: "Alice" });
+    const bob = await createViewer(t, { name: "Bob" });
+
+    await seedPrompts(t);
+    const aliceJoin = await alice.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+    const bobJoin = await bob.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+    await host.client.mutation(api.textGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.textGame.startGame, { lobbyId });
+
+    const generateState = await host.client.query(api.textGame.getGameState, {
+      lobbyId,
+    });
+    const pendingPlayer = generateState.round?.progress.find(
+      (entry) => entry.state === "Pending",
+    );
+    const targetPlayerId = generateState.round?.targetPlayer?.playerId;
+    const clientByPlayerId = new Map<string, typeof host.client>([
+      [hostPlayerId, host.client],
+      [aliceJoin.playerId, alice.client],
+      [bobJoin.playerId, bob.client],
+    ]);
+    const submittingClient = clientByPlayerId.get(pendingPlayer?.playerId ?? "");
+    const judgingClient = clientByPlayerId.get(targetPlayerId ?? "");
+
+    expect(generateState.round?.stage).toBe("Generate");
+    expect(pendingPlayer).toBeTruthy();
+    expect(targetPlayerId).toBeTruthy();
+    expect(submittingClient).toBeTruthy();
+    expect(judgingClient).toBeTruthy();
+
+    await submittingClient!.mutation(api.textGame.submitAnswer, {
+      lobbyId,
+      answer: "Partial submission survives host skip",
+    });
+
+    const partialState = await host.client.query(api.textGame.getGameState, {
+      lobbyId,
+    });
+
+    expect(partialState.round?.stage).toBe("Generate");
+    expect(partialState.round?.submissionCount).toBe(1);
+
+    const transition = await host.client.mutation(api.textGame.advanceToJudge, {
+      lobbyId,
+    });
+    const judgeState = await judgingClient!.query(api.textGame.getGameState, {
+      lobbyId,
+    });
+
+    expect(transition.transition).toBe("judge");
+    expect(judgeState.round?.stage).toBe("Judge");
+    expect(judgeState.round?.judgeSubmissions).toHaveLength(1);
+    expect(judgeState.round?.judgeSubmissions[0]?.answer).toBe(
+      "Partial submission survives host skip",
+    );
   });
 
   it("adds late joiners on the next round and writes the final leaderboard", async () => {

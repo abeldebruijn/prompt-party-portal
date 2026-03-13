@@ -59,7 +59,10 @@ async function transitionGenerateToJudgeOrPresent(
     return { state: "present" as const };
   }
 
-  if (submissions.length < expectedSubmissionCount) {
+  if (
+    submissions.length < expectedSubmissionCount &&
+    !(forcePresentIfEmpty && submissions.length > 0)
+  ) {
     return { state: "pending" as const };
   }
 
