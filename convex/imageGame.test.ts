@@ -286,6 +286,171 @@ describe("convex/imageGame", () => {
     expect(judgeState.round?.submissionCount).toBe(1);
   });
 
+  it("stores the latest poker for pending players and blocks invalid image-game pokes", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode, playerId: hostPlayerId } =
+      await createImageGameLobby(t);
+    const alice = await createViewer(t, { name: "Alice" });
+    const bob = await createViewer(t, { name: "Bob" });
+
+    await seedPrompts(t);
+    const aliceJoin = await alice.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+    const bobJoin = await bob.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+    await host.client.mutation(api.imageGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.imageGame.startGame, { lobbyId });
+
+    const initialState = await host.client.query(api.imageGame.getGameState, {
+      lobbyId,
+    });
+    const pendingPlayer = initialState.round?.progress.find(
+      (entry) => entry.state === "Pending",
+    );
+    const judgePlayer = initialState.round?.progress.find(
+      (entry) => entry.state === "Target",
+    );
+
+    expect(pendingPlayer).toBeTruthy();
+    expect(judgePlayer).toBeTruthy();
+
+    await expect(
+      alice.client.mutation(api.imageGame.pokePlayer, {
+        lobbyId,
+        playerId: aliceJoin.playerId,
+      }),
+    ).rejects.toThrow("You cannot poke yourself.");
+
+    await expect(
+      (
+        judgePlayer?.playerId === hostPlayerId ? alice.client : host.client
+      ).mutation(api.imageGame.pokePlayer, {
+        lobbyId,
+        playerId: judgePlayer?.playerId as Id<"lobbyPlayers">,
+      }),
+    ).rejects.toThrow("Only pending players can be poked.");
+
+    const pokerClient =
+      pendingPlayer?.playerId === aliceJoin.playerId
+        ? bob.client
+        : alice.client;
+    const expectedPokerName =
+      pendingPlayer?.playerId === aliceJoin.playerId ? "Bob" : "Alice";
+
+    await pokerClient.mutation(api.imageGame.pokePlayer, {
+      lobbyId,
+      playerId: pendingPlayer?.playerId as Id<"lobbyPlayers">,
+    });
+
+    const pokedState = await host.client.query(api.imageGame.getGameState, {
+      lobbyId,
+    });
+    const pokedEntry = pokedState.round?.progress.find(
+      (entry) => entry.playerId === pendingPlayer?.playerId,
+    );
+
+    expect(pokedEntry?.lastPoke).toEqual(
+      expect.objectContaining({
+        pokedByDisplayName: expectedPokerName,
+      }),
+    );
+
+    await submitPromptAsGeneratedImage(t, pokerClient, {
+      lobbyId,
+      prompt: "A bright retro arcade with confetti raining from the ceiling",
+    });
+
+    await expect(
+      host.client.mutation(api.imageGame.pokePlayer, {
+        lobbyId,
+        playerId: (pendingPlayer?.playerId === aliceJoin.playerId
+          ? bobJoin.playerId
+          : aliceJoin.playerId) as Id<"lobbyPlayers">,
+      }),
+    ).rejects.toThrow("Only pending players can be poked.");
+
+    const finisherClient =
+      pendingPlayer?.playerId === hostPlayerId
+        ? host.client
+        : pendingPlayer?.playerId === aliceJoin.playerId
+          ? alice.client
+          : bob.client;
+
+    await submitPromptAsGeneratedImage(t, finisherClient, {
+      lobbyId,
+      prompt: "A bright retro arcade with confetti raining from the ceiling",
+    });
+
+    await expect(
+      host.client.mutation(api.imageGame.pokePlayer, {
+        lobbyId,
+        playerId: pendingPlayer?.playerId as Id<"lobbyPlayers">,
+      }),
+    ).rejects.toThrow("Players can only be poked during Generate.");
+
+    await expect(
+      pokerClient.mutation(api.imageGame.pokePlayer, {
+        lobbyId,
+        playerId: pendingPlayer?.playerId as Id<"lobbyPlayers">,
+      }),
+    ).rejects.toThrow("Players can only be poked during Generate.");
+  });
+
+  it("rejects poking players who already submitted during generate", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createImageGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+    const thirdPlayer = await createViewer(t, { name: "Third" });
+
+    await seedPrompts(t);
+    const memberJoin = await member.client.mutation(
+      api.lobbies.joinLobbyByCode,
+      {
+        joinCode,
+      },
+    );
+    await thirdPlayer.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+    await host.client.mutation(api.imageGame.startGame, { lobbyId });
+
+    const gameState = await host.client.query(api.imageGame.getGameState, {
+      lobbyId,
+    });
+    const judgePlayerId = gameState.round?.targetPlayer?.playerId;
+
+    if (judgePlayerId === memberJoin.playerId) {
+      await submitPromptAsGeneratedImage(t, thirdPlayer.client, {
+        lobbyId,
+        prompt: "Third player submission",
+      });
+      await expect(
+        thirdPlayer.client.mutation(api.imageGame.pokePlayer, {
+          lobbyId,
+          playerId: memberJoin.playerId,
+        }),
+      ).rejects.toThrow("Only pending players can be poked.");
+      return;
+    }
+
+    await submitPromptAsGeneratedImage(t, member.client, {
+      lobbyId,
+      prompt: "Member submission",
+    });
+
+    await expect(
+      host.client.mutation(api.imageGame.pokePlayer, {
+        lobbyId,
+        playerId: memberJoin.playerId,
+      }),
+    ).rejects.toThrow("Only pending players can be poked.");
+  });
+
   it("returns a preview URL for a stored generated image", async () => {
     const t = createConvexTest();
     const { host, lobbyId, joinCode } = await createImageGameLobby(t);

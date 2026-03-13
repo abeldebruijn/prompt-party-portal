@@ -110,11 +110,13 @@ const schema = defineSchema({
     pokedByPlayerId: v.id("lobbyPlayers"),
     lobbyRoundNumber: v.optional(v.number()),
     textRoundId: v.optional(v.id("textGameRounds")),
+    imageRoundId: v.optional(v.id("imageGameRounds")),
     createdAt: v.number(),
   })
     .index("lobbyId", ["lobbyId"])
     .index("lobbyIdAndLobbyRoundNumber", ["lobbyId", "lobbyRoundNumber"])
-    .index("lobbyIdAndTextRoundId", ["lobbyId", "textRoundId"]),
+    .index("lobbyIdAndTextRoundId", ["lobbyId", "textRoundId"])
+    .index("lobbyIdAndImageRoundId", ["lobbyId", "imageRoundId"]),
 
   textGamePrompts: defineTable({
     slug: v.string(),

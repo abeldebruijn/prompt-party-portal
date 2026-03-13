@@ -3,6 +3,7 @@ export {
   advanceToJudge,
   advanceToPresent,
   generateUploadUrl,
+  pokePlayer,
   rateSubmission,
   startGame,
   submitGeneratedImage,

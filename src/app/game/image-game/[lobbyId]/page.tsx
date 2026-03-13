@@ -20,6 +20,7 @@ import {
 } from "@/app/game/image-game/submitPrompt";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
 import { PresentStageShell } from "@/components/game/present-stage";
+import { SubmissionProgressList } from "@/components/game/submission-progress-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
@@ -64,76 +65,6 @@ function SignedOutState() {
         </div>
       </SurfaceCard>
     </main>
-  );
-}
-
-function statusTone(state: string) {
-  switch (state) {
-    case "Submitted":
-      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-400";
-    case "Target":
-      return "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-400";
-    case "Spectating":
-    case "AiExcluded":
-      return "border-foreground/15 bg-foreground/5 text-foreground/60";
-    default:
-      return "border-foreground/15 bg-foreground/5 text-foreground/80";
-  }
-}
-
-function ProgressList({
-  progress,
-}: {
-  progress: NonNullable<GameSnapshot["round"]>["progress"];
-}) {
-  type States =
-    | "Submitted"
-    | "Pending"
-    | "Target"
-    | "Spectating"
-    | "AiExcluded";
-
-  /** When state is "PENDING" order is 0,
-   *  when state is "Submitted" order is 1,
-   *  when state is "Target" order is 2,
-   *  when state is "Spectating" order is 3,
-   *  when state is "AiExcluded" order is 4. */
-  function progressOrder(a: States) {
-    switch (a) {
-      case "Pending":
-        return 0;
-      case "Submitted":
-        return 1;
-      case "Target":
-        return 2;
-      case "Spectating":
-        return 3;
-      case "AiExcluded":
-        return 4;
-    }
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {progress
-        .toSorted((a, b) => progressOrder(a.state) - progressOrder(b.state))
-        .map((entry) => (
-          <div
-            key={entry.playerId}
-            className={cn(
-              "flex items-center gap-2 rounded-xl border px-3 py-2",
-              statusTone(entry.state),
-            )}
-          >
-            <span className="max-w-[140px] truncate text-sm font-medium">
-              {entry.displayName}
-            </span>
-            <span className="text-[0.65rem] font-bold uppercase tracking-[0.15em] opacity-60">
-              {entry.state}
-            </span>
-          </div>
-        ))}
-    </div>
   );
 }
 
@@ -957,7 +888,6 @@ function PresentStage({
           )}
         </Button>
       ) : null}
-
     </PresentStageShell>
   );
 }
@@ -972,6 +902,7 @@ export default function ImageGamePage() {
     isAuthenticated ? { lobbyId } : "skip",
   );
 
+  const pokePlayer = useMutation(api.imageGame.pokePlayer);
   const resetLobby = useMutation(api.lobbies.resetLobby);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1095,7 +1026,19 @@ export default function ImageGamePage() {
               </SurfaceCardTitle>
             </div>
             <div className="mt-6">
-              <ProgressList progress={snapshot.round.progress} />
+              <SubmissionProgressList
+                onPoke={(playerId) =>
+                  void runAction(`poke:${playerId}`, async () => {
+                    await pokePlayer({
+                      lobbyId,
+                      playerId: playerId as Id<"lobbyPlayers">,
+                    });
+                  })
+                }
+                pendingAction={pendingAction}
+                progress={snapshot.round.progress}
+                viewerPlayerId={snapshot.viewer.playerId}
+              />
             </div>
           </SurfaceCard>
 
