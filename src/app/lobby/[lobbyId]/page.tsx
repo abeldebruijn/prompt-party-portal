@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type * as React from "react";
 import { useEffect, useMemo, useState } from "react";
+import { SubmissionProgressList } from "@/components/game/submission-progress-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -292,6 +293,7 @@ export default function LobbyRoomPage() {
   const voteForGame = useMutation(api.lobbies.voteForGame);
   const addAiPlayer = useMutation(api.lobbies.addAiPlayer);
   const kickPlayer = useMutation(api.lobbies.kickPlayer);
+  const pokePlayer = useMutation(api.lobbies.pokePlayer);
   const startRound = useMutation(api.lobbies.startRound);
   const completeLobby = useMutation(api.lobbies.completeLobby);
   const resetLobby = useMutation(api.lobbies.resetLobby);
@@ -620,6 +622,36 @@ export default function LobbyRoomPage() {
 
                 {isHost ? (
                   <div className="space-y-4">
+                    {snapshot.submissionProgress ? (
+                      <div className="rounded-3xl border border-foreground/10 bg-background/70 p-5">
+                        <div className="flex items-center gap-3">
+                          <UsersIcon className="size-5 text-primary" />
+                          <h3 className="text-lg font-semibold text-foreground">
+                            Submission progress
+                          </h3>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-foreground/70">
+                          Pending players can be poked to help move the round
+                          along.
+                        </p>
+                        <div className="mt-4">
+                          <SubmissionProgressList
+                            onPoke={(playerId) =>
+                              void runAction(`poke:${playerId}`, async () => {
+                                await pokePlayer({
+                                  lobbyId,
+                                  playerId: playerId as Id<"lobbyPlayers">,
+                                });
+                              })
+                            }
+                            pendingAction={pendingAction}
+                            progress={snapshot.submissionProgress}
+                            viewerPlayerId={snapshot.viewer.playerId}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
                     <label
                       className="block space-y-2"
                       htmlFor="completion-summary"
@@ -667,11 +699,43 @@ export default function LobbyRoomPage() {
                     </Button>
                   </div>
                 ) : (
-                  <p className="text-sm leading-6 text-foreground/75">
-                    The host controls when this round moves to the completion
-                    board. You can still stay synced with the roster in real
-                    time.
-                  </p>
+                  <div className="space-y-4">
+                    {snapshot.submissionProgress ? (
+                      <div className="rounded-3xl border border-foreground/10 bg-background/70 p-5">
+                        <div className="flex items-center gap-3">
+                          <UsersIcon className="size-5 text-primary" />
+                          <h3 className="text-lg font-semibold text-foreground">
+                            Submission progress
+                          </h3>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-foreground/70">
+                          Pending players can be poked, and your row will show
+                          who nudged you last.
+                        </p>
+                        <div className="mt-4">
+                          <SubmissionProgressList
+                            onPoke={(playerId) =>
+                              void runAction(`poke:${playerId}`, async () => {
+                                await pokePlayer({
+                                  lobbyId,
+                                  playerId: playerId as Id<"lobbyPlayers">,
+                                });
+                              })
+                            }
+                            pendingAction={pendingAction}
+                            progress={snapshot.submissionProgress}
+                            viewerPlayerId={snapshot.viewer.playerId}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <p className="text-sm leading-6 text-foreground/75">
+                      The host controls when this round moves to the completion
+                      board. You can still stay synced with the roster in real
+                      time.
+                    </p>
+                  </div>
                 )}
               </div>
             ) : null}

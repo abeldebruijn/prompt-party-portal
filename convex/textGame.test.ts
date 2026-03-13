@@ -215,6 +215,65 @@ describe("convex/textGame", () => {
     expect(judgeState.round?.judgeSubmissions).toHaveLength(1);
   });
 
+  it("stores the latest poker for pending players and blocks invalid text-game pokes", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createTextGameLobby(t);
+    const alice = await createViewer(t, { name: "Alice" });
+    const bob = await createViewer(t, { name: "Bob" });
+
+    await seedPrompts(t);
+    const aliceJoin = await alice.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+    await bob.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.textGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.textGame.startGame, { lobbyId });
+
+    const initialState = await host.client.query(api.textGame.getGameState, {
+      lobbyId,
+    });
+    const pendingPlayer = initialState.round?.progress.find(
+      (entry) => entry.state === "Pending",
+    );
+
+    expect(pendingPlayer).toBeTruthy();
+
+    await expect(
+      alice.client.mutation(api.textGame.pokePlayer, {
+        lobbyId,
+        playerId: aliceJoin.playerId,
+      }),
+    ).rejects.toThrow("You cannot poke yourself.");
+
+    const pokerClient =
+      pendingPlayer?.playerId === aliceJoin.playerId
+        ? bob.client
+        : alice.client;
+    const expectedPokerName =
+      pendingPlayer?.playerId === aliceJoin.playerId ? "Bob" : "Alice";
+
+    await pokerClient.mutation(api.textGame.pokePlayer, {
+      lobbyId,
+      playerId: pendingPlayer?.playerId as Id<"lobbyPlayers">,
+    });
+
+    const pokedState = await host.client.query(api.textGame.getGameState, {
+      lobbyId,
+    });
+    const pokedEntry = pokedState.round?.progress.find(
+      (entry) => entry.playerId === pendingPlayer?.playerId,
+    );
+
+    expect(pokedEntry?.lastPoke).toEqual(
+      expect.objectContaining({
+        pokedByDisplayName: expectedPokerName,
+      }),
+    );
+  });
+
   it("can skip judge with zero submissions and complete idempotently after present", async () => {
     const t = createConvexTest();
     const { host, lobbyId, joinCode } = await createTextGameLobby(t);

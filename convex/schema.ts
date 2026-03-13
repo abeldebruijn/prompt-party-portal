@@ -104,6 +104,18 @@ const schema = defineSchema({
     .index("lobbyId", ["lobbyId"])
     .index("completedByUserId", ["completedByUserId"]),
 
+  playerPokes: defineTable({
+    lobbyId: v.id("lobbies"),
+    targetPlayerId: v.id("lobbyPlayers"),
+    pokedByPlayerId: v.id("lobbyPlayers"),
+    lobbyRoundNumber: v.optional(v.number()),
+    textRoundId: v.optional(v.id("textGameRounds")),
+    createdAt: v.number(),
+  })
+    .index("lobbyId", ["lobbyId"])
+    .index("lobbyIdAndLobbyRoundNumber", ["lobbyId", "lobbyRoundNumber"])
+    .index("lobbyIdAndTextRoundId", ["lobbyId", "textRoundId"]),
+
   textGamePrompts: defineTable({
     slug: v.string(),
     template: v.string(),

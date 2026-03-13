@@ -118,7 +118,7 @@ describe("convex/lobbies", () => {
     });
     await host.client.mutation(api.lobbies.selectGame, {
       lobbyId,
-      game: GAME_THREE,
+      game: GAME_TWO,
     });
     await host.client.mutation(api.lobbies.kickPlayer, {
       lobbyId,
@@ -139,7 +139,7 @@ describe("convex/lobbies", () => {
 
     expect(creationSnapshot.lobby).toMatchObject({
       _id: lobbyId,
-      selectedGame: GAME_THREE,
+      selectedGame: GAME_TWO,
       state: "Creation",
       activePlayerCount: 3,
     });
@@ -156,6 +156,32 @@ describe("convex/lobbies", () => {
     ).toMatchObject({ count: 1 });
 
     await host.client.mutation(api.lobbies.startRound, { lobbyId });
+    await host.client.mutation(api.lobbies.pokePlayer, {
+      lobbyId,
+      playerId: aliceJoin.playerId,
+    });
+
+    const playingSnapshot = await alice.client.query(api.lobbies.getLobby, {
+      lobbyId,
+    });
+
+    expect(playingSnapshot.submissionProgress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          playerId: aliceJoin.playerId,
+          state: "Pending",
+          lastPoke: expect.objectContaining({
+            pokedByDisplayName: "Host Person",
+          }),
+        }),
+        expect.objectContaining({
+          playerId: aiPlayer.playerId,
+          state: "AiExcluded",
+          lastPoke: null,
+        }),
+      ]),
+    );
+
     const completion = await host.client.mutation(api.lobbies.completeLobby, {
       lobbyId,
       summary: "  Great   finish  ",
@@ -187,6 +213,10 @@ describe("convex/lobbies", () => {
     });
     const dbStateAfterCompletion = await t.run(async (ctx) => {
       const lobby = await ctx.db.get(lobbyId);
+      const pokes = await ctx.db
+        .query("playerPokes")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
+        .collect();
       const votes = await ctx.db
         .query("lobbyGameVotes")
         .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
@@ -196,7 +226,7 @@ describe("convex/lobbies", () => {
         .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
         .first();
 
-      return { lobby, votes, completionRecord };
+      return { lobby, pokes, votes, completionRecord };
     });
 
     expect(completion).toMatchObject({
@@ -207,7 +237,7 @@ describe("convex/lobbies", () => {
     expect(completionSnapshot.completion).toMatchObject({
       _id: completion.completionId,
       completedByUserId: host.userId,
-      selectedGame: GAME_THREE,
+      selectedGame: GAME_TWO,
       summary: "Great finish",
     });
     expect(completionSnapshot.completion?.leaderboard).toEqual([
@@ -233,6 +263,7 @@ describe("convex/lobbies", () => {
       },
     ]);
     expect(dbStateAfterCompletion.lobby?.state).toBe("Completion");
+    expect(dbStateAfterCompletion.pokes).toHaveLength(1);
     expect(dbStateAfterCompletion.votes).toHaveLength(1);
     expect(dbStateAfterCompletion.completionRecord?._id).toBe(
       completion.completionId,
@@ -247,12 +278,16 @@ describe("convex/lobbies", () => {
     });
     const dbStateAfterReset = await t.run(async (ctx) => {
       const lobby = await ctx.db.get(lobbyId);
+      const pokes = await ctx.db
+        .query("playerPokes")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
+        .collect();
       const votes = await ctx.db
         .query("lobbyGameVotes")
         .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
         .collect();
 
-      return { lobby, votes };
+      return { lobby, pokes, votes };
     });
 
     expect(resetSnapshot.lobby).toMatchObject({
@@ -266,6 +301,7 @@ describe("convex/lobbies", () => {
     expect(dbStateAfterReset.lobby?.currentRound).toBe(0);
     expect(dbStateAfterReset.lobby?.startedAt).toBeUndefined();
     expect(dbStateAfterReset.lobby?.completedAt).toBeUndefined();
+    expect(dbStateAfterReset.pokes).toEqual([]);
     expect(dbStateAfterReset.votes).toEqual([]);
   });
 
@@ -555,5 +591,44 @@ describe("convex/lobbies", () => {
     ).rejects.toThrow(
       "This lobby has already wrapped up. Ask the host to reset it first.",
     );
+  });
+
+  it("only lets active players poke other human players during a live non-text round", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createLobbyFixture(t);
+    const alice = await createViewer(t, { name: "Alice" });
+    const bob = await createViewer(t, { name: "Bob" });
+
+    const aliceJoin = await alice.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+    const bobJoin = await bob.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+
+    await expect(
+      alice.client.mutation(api.lobbies.pokePlayer, {
+        lobbyId,
+        playerId: bobJoin.playerId,
+      }),
+    ).rejects.toThrow(
+      "Players can only be poked while a round is in progress.",
+    );
+
+    await host.client.mutation(api.lobbies.startRound, { lobbyId });
+
+    await expect(
+      alice.client.mutation(api.lobbies.pokePlayer, {
+        lobbyId,
+        playerId: aliceJoin.playerId,
+      }),
+    ).rejects.toThrow("You cannot poke yourself.");
+
+    const poke = await alice.client.mutation(api.lobbies.pokePlayer, {
+      lobbyId,
+      playerId: bobJoin.playerId,
+    });
+
+    expect(poke.playerId).toBe(bobJoin.playerId);
   });
 });

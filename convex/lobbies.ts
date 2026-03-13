@@ -4,6 +4,7 @@ export {
   createLobby,
   joinLobbyByCode,
   kickPlayer,
+  pokePlayer,
   resetLobby,
   selectGame,
   startRound,

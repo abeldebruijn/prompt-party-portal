@@ -7,6 +7,7 @@ import {
   getActiveSession,
   getCurrentRound,
   listAllActivePlayers,
+  listLatestRoundPokes,
   listRoundSubmissions,
   requireTextGameMembership,
 } from "./helpers";
@@ -59,8 +60,17 @@ export const getGameState = query({
     const targetPlayer = activePlayers.find(
       (player) => player._id === round.targetPlayerId,
     );
+    const playerDisplayNames = new Map(
+      activePlayers.map((player) => [player._id, player.displayName]),
+    );
     const submittedSet = new Set(
       submissions.map((submission) => submission.authorPlayerId),
+    );
+    const latestPokeByTargetId = await listLatestRoundPokes(
+      ctx,
+      args.lobbyId,
+      round._id,
+      playerDisplayNames,
     );
     const viewerSubmission =
       submissions.find(
@@ -83,6 +93,7 @@ export const getGameState = query({
           playerId: player._id,
           displayName: player.displayName,
           state: "AiExcluded" as const,
+          lastPoke: null,
         };
       }
 
@@ -91,6 +102,7 @@ export const getGameState = query({
           playerId: player._id,
           displayName: player.displayName,
           state: "Spectating" as const,
+          lastPoke: null,
         };
       }
 
@@ -99,6 +111,7 @@ export const getGameState = query({
           playerId: player._id,
           displayName: player.displayName,
           state: "Target" as const,
+          lastPoke: null,
         };
       }
 
@@ -108,6 +121,9 @@ export const getGameState = query({
         state: submittedSet.has(player._id)
           ? ("Submitted" as const)
           : ("Pending" as const),
+        lastPoke: submittedSet.has(player._id)
+          ? null
+          : (latestPokeByTargetId.get(player._id) ?? null),
       };
     });
 

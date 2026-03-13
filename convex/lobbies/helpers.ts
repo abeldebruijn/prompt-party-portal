@@ -118,24 +118,36 @@ export async function buildLobbySnapshot(
   lobby: Doc<"lobbies">,
   viewerId: Id<"users">,
 ) {
-  const [players, votes, completion, viewerPlayer] = await Promise.all([
-    ctx.db
-      .query("lobbyPlayers")
-      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
-      .collect(),
-    ctx.db
-      .query("lobbyGameVotes")
-      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
-      .collect(),
-    lobby.state === "Completion"
-      ? ctx.db
-          .query("lobbyCompletions")
-          .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
-          .order("desc")
-          .first()
-      : Promise.resolve(null),
-    findViewerPlayer(ctx, lobby._id, viewerId),
-  ]);
+  const [players, votes, completion, viewerPlayer, playerPokes] =
+    await Promise.all([
+      ctx.db
+        .query("lobbyPlayers")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+        .collect(),
+      ctx.db
+        .query("lobbyGameVotes")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+        .collect(),
+      lobby.state === "Completion"
+        ? ctx.db
+            .query("lobbyCompletions")
+            .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+            .order("desc")
+            .first()
+        : Promise.resolve(null),
+      findViewerPlayer(ctx, lobby._id, viewerId),
+      lobby.state === "Playing" &&
+      lobby.selectedGame !== "Pick text that suits a situation"
+        ? ctx.db
+            .query("playerPokes")
+            .withIndex("lobbyIdAndLobbyRoundNumber", (query) =>
+              query
+                .eq("lobbyId", lobby._id)
+                .eq("lobbyRoundNumber", lobby.currentRound),
+            )
+            .collect()
+        : Promise.resolve([]),
+    ]);
 
   const activePlayers = players
     .filter((player) => player.isActive)
@@ -144,6 +156,32 @@ export async function buildLobbySnapshot(
     game,
     count: votes.filter((vote) => vote.game === game).length,
   }));
+  const playerNameById = new Map(
+    activePlayers.map((player) => [player._id, player.displayName]),
+  );
+  const latestPokeByTargetId = new Map<
+    Id<"lobbyPlayers">,
+    {
+      createdAt: number;
+      pokedByDisplayName: string;
+      pokedByPlayerId: Id<"lobbyPlayers">;
+    }
+  >();
+
+  for (const poke of playerPokes) {
+    const existing = latestPokeByTargetId.get(poke.targetPlayerId);
+
+    if (existing && existing.createdAt >= poke.createdAt) {
+      continue;
+    }
+
+    latestPokeByTargetId.set(poke.targetPlayerId, {
+      createdAt: poke.createdAt,
+      pokedByDisplayName:
+        playerNameById.get(poke.pokedByPlayerId) ?? "Another player",
+      pokedByPlayerId: poke.pokedByPlayerId,
+    });
+  }
 
   return {
     lobby: {
@@ -160,6 +198,19 @@ export async function buildLobbySnapshot(
     votes,
     voteSummary,
     completion,
+    submissionProgress:
+      lobby.state === "Playing" &&
+      lobby.selectedGame !== "Pick text that suits a situation"
+        ? activePlayers.map((player) => ({
+            playerId: player._id,
+            displayName: player.displayName,
+            state:
+              player.kind === "ai"
+                ? ("AiExcluded" as const)
+                : ("Pending" as const),
+            lastPoke: latestPokeByTargetId.get(player._id) ?? null,
+          }))
+        : null,
   };
 }
 

@@ -241,6 +241,81 @@ export const submitAnswer = mutation({
   },
 });
 
+export const pokePlayer = mutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+    playerId: v.id("lobbyPlayers"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await requireTextGameMembership(ctx, args.lobbyId);
+    const session = await getActiveSession(ctx, args.lobbyId);
+
+    if (session === null || session.status !== "InProgress") {
+      throw new Error("The text game is not currently running.");
+    }
+
+    const round = await getCurrentRound(
+      ctx,
+      session._id,
+      session.currentRoundNumber,
+    );
+
+    if (round === null || round.stage !== "Generate") {
+      throw new Error("Players can only be poked during Generate.");
+    }
+
+    if (membership.player._id === args.playerId) {
+      throw new Error("You cannot poke yourself.");
+    }
+
+    const targetPlayer = await ctx.db.get(args.playerId);
+
+    if (
+      targetPlayer === null ||
+      targetPlayer.lobbyId !== args.lobbyId ||
+      !targetPlayer.isActive ||
+      targetPlayer.kind !== "human"
+    ) {
+      throw new Error("Only pending players can be poked.");
+    }
+
+    if (
+      !round.eligiblePlayerIds.includes(targetPlayer._id) ||
+      targetPlayer._id === round.targetPlayerId
+    ) {
+      throw new Error("Only pending players can be poked.");
+    }
+
+    const existingSubmission = await ctx.db
+      .query("textGameSubmissions")
+      .withIndex("roundIdAndAuthorPlayerId", (query) =>
+        query.eq("roundId", round._id).eq("authorPlayerId", targetPlayer._id),
+      )
+      .unique();
+
+    if (existingSubmission !== null) {
+      throw new Error("Only pending players can be poked.");
+    }
+
+    const now = Date.now();
+    const pokeId = await ctx.db.insert("playerPokes", {
+      lobbyId: args.lobbyId,
+      targetPlayerId: targetPlayer._id,
+      pokedByPlayerId: membership.player._id,
+      textRoundId: round._id,
+      createdAt: now,
+    });
+
+    await ctx.db.patch(membership.lobby._id, { lastActivityAt: now });
+
+    return {
+      lobbyId: args.lobbyId,
+      pokeId,
+      playerId: targetPlayer._id,
+    };
+  },
+});
+
 export const advanceToJudge = mutation({
   args: {
     lobbyId: v.id("lobbies"),
@@ -396,7 +471,6 @@ export const advanceToPresent = mutation({
     );
 
     if (!allRated) {
-      
     }
 
     const now = Date.now();

@@ -137,6 +137,45 @@ export async function listRoundSubmissions(
     .collect();
 }
 
+export async function listLatestRoundPokes(
+  ctx: DbContext,
+  lobbyId: Id<"lobbies">,
+  roundId: Id<"textGameRounds">,
+  playerDisplayNames: Map<Id<"lobbyPlayers">, string>,
+) {
+  const pokes = await ctx.db
+    .query("playerPokes")
+    .withIndex("lobbyIdAndTextRoundId", (query) =>
+      query.eq("lobbyId", lobbyId).eq("textRoundId", roundId),
+    )
+    .collect();
+  const latestPokeByTargetId = new Map<
+    Id<"lobbyPlayers">,
+    {
+      createdAt: number;
+      pokedByDisplayName: string;
+      pokedByPlayerId: Id<"lobbyPlayers">;
+    }
+  >();
+
+  for (const poke of pokes) {
+    const existing = latestPokeByTargetId.get(poke.targetPlayerId);
+
+    if (existing && existing.createdAt >= poke.createdAt) {
+      continue;
+    }
+
+    latestPokeByTargetId.set(poke.targetPlayerId, {
+      createdAt: poke.createdAt,
+      pokedByDisplayName:
+        playerDisplayNames.get(poke.pokedByPlayerId) ?? "Another player",
+      pokedByPlayerId: poke.pokedByPlayerId,
+    });
+  }
+
+  return latestPokeByTargetId;
+}
+
 export async function listActiveHumanPlayers(
   ctx: DbContext,
   lobbyId: Id<"lobbies">,

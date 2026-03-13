@@ -346,6 +346,61 @@ export const startRound = mutation({
   },
 });
 
+export const pokePlayer = mutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+    playerId: v.id("lobbyPlayers"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await requireLobbyMembershipForViewer(ctx, args.lobbyId);
+
+    if (membership.lobby.state !== "Playing") {
+      throw new Error(
+        "Players can only be poked while a round is in progress.",
+      );
+    }
+
+    if (membership.lobby.selectedGame === "Pick text that suits a situation") {
+      throw new Error("Text-game pokes should use the text-game play screen.");
+    }
+
+    if (membership.player._id === args.playerId) {
+      throw new Error("You cannot poke yourself.");
+    }
+
+    const targetPlayer = await ctx.db.get(args.playerId);
+
+    if (
+      targetPlayer === null ||
+      targetPlayer.lobbyId !== args.lobbyId ||
+      !targetPlayer.isActive
+    ) {
+      throw new Error("That player is not currently pending in this round.");
+    }
+
+    if (targetPlayer.kind !== "human") {
+      throw new Error("Only pending human players can be poked.");
+    }
+
+    const now = Date.now();
+    const pokeId = await ctx.db.insert("playerPokes", {
+      lobbyId: args.lobbyId,
+      targetPlayerId: targetPlayer._id,
+      pokedByPlayerId: membership.player._id,
+      lobbyRoundNumber: membership.lobby.currentRound,
+      createdAt: now,
+    });
+
+    await ctx.db.patch(membership.lobby._id, { lastActivityAt: now });
+
+    return {
+      lobbyId: args.lobbyId,
+      pokeId,
+      playerId: targetPlayer._id,
+    };
+  },
+});
+
 export const completeLobby = mutation({
   args: {
     lobbyId: v.id("lobbies"),
@@ -432,6 +487,12 @@ export const resetLobby = mutation({
     ).flat();
 
     await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
+    const pokes = await ctx.db
+      .query("playerPokes")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+
+    await Promise.all(pokes.map((poke) => ctx.db.delete(poke._id)));
     await Promise.all(
       submissions.map((submission) => ctx.db.delete(submission._id)),
     );

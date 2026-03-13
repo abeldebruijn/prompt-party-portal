@@ -2,6 +2,7 @@ export {
   advanceAfterPresent,
   advanceToJudge,
   advanceToPresent,
+  pokePlayer,
   rateSubmission,
   startGame,
   submitAnswer,
