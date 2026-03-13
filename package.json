@@ -18,6 +18,7 @@
     "@auth/core": "0.37.0",
     "@convex-dev/auth": "^0.0.91",
     "@edge-runtime/vm": "^5.0.0",
+    "ai": "^6.0.116",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

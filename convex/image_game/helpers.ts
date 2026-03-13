@@ -1,18 +1,19 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { PRESENT_DURATION_MS } from "../game/constants";
+import { shuffleArray } from "../game/random";
 import { requireViewer } from "../lib/auth";
 import {
   DEFAULT_TEXT_GAME_ROUND_COUNT,
+  IMAGE_GAME_NAME,
   MAX_TEXT_GAME_ROUND_COUNT,
-  sanitizeTextGameAnswer,
-  TEXT_GAME_NAME,
+  sanitizeImageGamePrompt,
 } from "../lib/lobby";
 import {
   findViewerPlayer,
   getLobbyOrThrow,
   sortPlayers,
 } from "../lobbies/helpers";
-import { PRESENT_DURATION_MS } from "./constants";
 
 type DbContext = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">;
 
@@ -28,11 +29,7 @@ export function clampRoundCount(roundCount?: number) {
   return Math.max(1, Math.min(MAX_TEXT_GAME_ROUND_COUNT, roundCount));
 }
 
-export function renderPrompt(template: string, person: string) {
-  return template.replaceAll("{person}", person);
-}
-
-export async function requireTextGameHost(
+export async function requireImageGameHost(
   ctx: MutationCtx,
   lobbyId: Id<"lobbies">,
 ) {
@@ -43,22 +40,22 @@ export async function requireTextGameHost(
     throw new Error("Only the lobby host can do that.");
   }
 
-  if (lobby.selectedGame !== TEXT_GAME_NAME) {
-    throw new Error("This lobby is not using the text game.");
+  if (lobby.selectedGame !== IMAGE_GAME_NAME) {
+    throw new Error("This lobby is not using the image game.");
   }
 
   return { lobby, viewer };
 }
 
-export async function requireTextGameMembership(
+export async function requireImageGameMembership(
   ctx: QueryCtx | MutationCtx,
   lobbyId: Id<"lobbies">,
 ) {
   const viewer = await requireViewer(ctx);
   const lobby = await getLobbyOrThrow(ctx, lobbyId);
 
-  if (lobby.selectedGame !== TEXT_GAME_NAME) {
-    throw new Error("This lobby is not using the text game.");
+  if (lobby.selectedGame !== IMAGE_GAME_NAME) {
+    throw new Error("This lobby is not using the image game.");
   }
 
   const player = await findViewerPlayer(ctx, lobbyId, viewer._id);
@@ -72,7 +69,7 @@ export async function requireTextGameMembership(
 
 export async function getActiveSession(ctx: DbContext, lobbyId: Id<"lobbies">) {
   const sessions = await ctx.db
-    .query("textGameSessions")
+    .query("imageGameSessions")
     .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
     .order("desc")
     .collect();
@@ -86,11 +83,11 @@ export async function getActiveSession(ctx: DbContext, lobbyId: Id<"lobbies">) {
 
 export async function getCurrentRound(
   ctx: DbContext,
-  sessionId: Id<"textGameSessions">,
+  sessionId: Id<"imageGameSessions">,
   roundNumber: number,
 ) {
   return await ctx.db
-    .query("textGameRounds")
+    .query("imageGameRounds")
     .withIndex("sessionIdAndRoundNumber", (query) =>
       query.eq("sessionId", sessionId).eq("roundNumber", roundNumber),
     )
@@ -99,51 +96,12 @@ export async function getCurrentRound(
 
 export async function listRoundSubmissions(
   ctx: DbContext,
-  roundId: Id<"textGameRounds">,
+  roundId: Id<"imageGameRounds">,
 ) {
   return await ctx.db
-    .query("textGameSubmissions")
+    .query("imageGameSubmissions")
     .withIndex("roundId", (query) => query.eq("roundId", roundId))
     .collect();
-}
-
-export async function listLatestRoundPokes(
-  ctx: DbContext,
-  lobbyId: Id<"lobbies">,
-  roundId: Id<"textGameRounds">,
-  playerDisplayNames: Map<Id<"lobbyPlayers">, string>,
-) {
-  const pokes = await ctx.db
-    .query("playerPokes")
-    .withIndex("lobbyIdAndTextRoundId", (query) =>
-      query.eq("lobbyId", lobbyId).eq("textRoundId", roundId),
-    )
-    .collect();
-  const latestPokeByTargetId = new Map<
-    Id<"lobbyPlayers">,
-    {
-      createdAt: number;
-      pokedByDisplayName: string;
-      pokedByPlayerId: Id<"lobbyPlayers">;
-    }
-  >();
-
-  for (const poke of pokes) {
-    const existing = latestPokeByTargetId.get(poke.targetPlayerId);
-
-    if (existing && existing.createdAt >= poke.createdAt) {
-      continue;
-    }
-
-    latestPokeByTargetId.set(poke.targetPlayerId, {
-      createdAt: poke.createdAt,
-      pokedByDisplayName:
-        playerDisplayNames.get(poke.pokedByPlayerId) ?? "Another player",
-      pokedByPlayerId: poke.pokedByPlayerId,
-    });
-  }
-
-  return latestPokeByTargetId;
 }
 
 export async function listActiveHumanPlayers(
@@ -174,9 +132,13 @@ export async function listAllActivePlayers(
   ).sort(sortPlayers);
 }
 
+export function renderPrompt(template: string, person: string) {
+  return template.replaceAll("{person}", person);
+}
+
 export async function createRound(
   ctx: MutationCtx,
-  session: Doc<"textGameSessions">,
+  session: Doc<"imageGameSessions">,
   lobbyId: Id<"lobbies">,
   roundNumber: number,
   now: number,
@@ -185,26 +147,26 @@ export async function createRound(
 
   if (eligiblePlayers.length < 2) {
     throw new Error(
-      "At least two active human players are required for the text game.",
+      "At least two active human players are required for the image game.",
     );
   }
 
   const promptId = session.promptIds[roundNumber - 1];
 
   if (!promptId) {
-    throw new Error("The requested text-game prompt could not be found.");
+    throw new Error("The requested image-game prompt could not be found.");
   }
 
   const prompt = await ctx.db.get(promptId);
 
   if (prompt === null || !prompt.isActive) {
-    throw new Error("The requested text-game prompt could not be found.");
+    throw new Error("The requested image-game prompt could not be found.");
   }
 
   const targetPlayer =
     eligiblePlayers[(roundNumber - 1) % eligiblePlayers.length];
 
-  const roundId = await ctx.db.insert("textGameRounds", {
+  const roundId = await ctx.db.insert("imageGameRounds", {
     sessionId: session._id,
     lobbyId,
     roundNumber,
@@ -226,10 +188,10 @@ export async function createRound(
 
 export async function computeLeaderboard(
   ctx: DbContext,
-  sessionId: Id<"textGameSessions">,
+  sessionId: Id<"imageGameSessions">,
 ) {
   const rounds = await ctx.db
-    .query("textGameRounds")
+    .query("imageGameRounds")
     .withIndex("sessionId", (query) => query.eq("sessionId", sessionId))
     .collect();
   const submissionsByRound = await Promise.all(
@@ -280,7 +242,7 @@ export async function computeLeaderboard(
 
 export async function buildWinningSubmissions(
   ctx: DbContext,
-  round: Doc<"textGameRounds">,
+  round: Doc<"imageGameRounds">,
 ) {
   const submissions = await listRoundSubmissions(ctx, round._id);
   const scoredSubmissions = submissions.filter(
@@ -303,7 +265,9 @@ export async function buildWinningSubmissions(
 
   return winners.map((winner, index) => ({
     submissionId: winner._id,
-    answer: winner.answer,
+    prompt: winner.prompt,
+    imageStorageId: winner.imageStorageId,
+    imageMediaType: winner.imageMediaType,
     totalScore: winner.totalScore ?? 0,
     correctnessStars: winner.correctnessStars ?? 0,
     creativityStars: winner.creativityStars ?? 0,
@@ -311,8 +275,8 @@ export async function buildWinningSubmissions(
   }));
 }
 
-export function sanitizeAnswerInput(answer: string) {
-  const sanitized = sanitizeTextGameAnswer(answer);
+export function sanitizePromptInput(prompt: string) {
+  const sanitized = sanitizeImageGamePrompt(prompt);
 
   if (sanitized.length < 1) {
     throw new Error("Submissions need at least one visible character.");
@@ -323,7 +287,7 @@ export function sanitizeAnswerInput(answer: string) {
 
 export async function moveRoundToPresent(
   ctx: MutationCtx,
-  round: Doc<"textGameRounds">,
+  round: Doc<"imageGameRounds">,
   now: number,
 ) {
   await ctx.db.patch(round._id, {
@@ -331,4 +295,27 @@ export async function moveRoundToPresent(
     stageStartedAt: now,
     presentEndsAt: now + PRESENT_DURATION_MS,
   });
+}
+
+export async function selectPromptIds(
+  ctx: MutationCtx,
+  lobbyId: Id<"lobbies">,
+  roundCount: number,
+) {
+  const prompts = await ctx.db
+    .query("textGamePrompts")
+    .withIndex("isActive", (query) => query.eq("isActive", true))
+    .collect();
+
+  if (prompts.length < roundCount) {
+    throw new Error("Not enough active image-game prompts are stored yet.");
+  }
+
+  const now = Date.now();
+  return shuffleArray(
+    prompts.sort((left, right) => left.order - right.order),
+    `${lobbyId}:${now}:image-game-prompts`,
+  )
+    .slice(0, roundCount)
+    .map((prompt) => prompt._id);
 }

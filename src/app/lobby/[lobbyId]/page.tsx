@@ -298,7 +298,9 @@ export default function LobbyRoomPage() {
   const completeLobby = useMutation(api.lobbies.completeLobby);
   const resetLobby = useMutation(api.lobbies.resetLobby);
   const updateTextGameSettings = useMutation(api.textGame.updateSettings);
+  const updateImageGameSettings = useMutation(api.imageGame.updateSettings);
   const startTextGame = useMutation(api.textGame.startGame);
+  const startImageGame = useMutation(api.imageGame.startGame);
 
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -340,7 +342,10 @@ export default function LobbyRoomPage() {
   }, [viewerPlayer]);
 
   useEffect(() => {
-    if (snapshot?.lobby.selectedGame === "Pick text that suits a situation") {
+    if (
+      snapshot?.lobby.selectedGame === "Pick text that suits a situation" ||
+      snapshot?.lobby.selectedGame === "Pick image that suits a situation"
+    ) {
       setTextGameRoundCountDraft(String(snapshot.lobby.textGameRoundCount));
     }
   }, [snapshot?.lobby.selectedGame, snapshot?.lobby.textGameRoundCount]);
@@ -351,6 +356,15 @@ export default function LobbyRoomPage() {
       snapshot.lobby.state !== "Creation"
     ) {
       router.replace(`/game/text-game/${lobbyId}`);
+    }
+  }, [lobbyId, router, snapshot?.lobby.selectedGame, snapshot?.lobby.state]);
+
+  useEffect(() => {
+    if (
+      snapshot?.lobby.selectedGame === "Pick image that suits a situation" &&
+      snapshot.lobby.state !== "Creation"
+    ) {
+      router.replace(`/game/image-game/${lobbyId}`);
     }
   }, [lobbyId, router, snapshot?.lobby.selectedGame, snapshot?.lobby.state]);
 
@@ -411,6 +425,8 @@ export default function LobbyRoomPage() {
   const canKickPlayers = isHost && snapshot.lobby.state === "Creation";
   const isTextGame =
     snapshot.lobby.selectedGame === "Pick text that suits a situation";
+  const isImageGame =
+    snapshot.lobby.selectedGame === "Pick image that suits a situation";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
@@ -429,49 +445,15 @@ export default function LobbyRoomPage() {
         <div className="space-y-6">
           <SurfaceCard>
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                asChild
-                className="rounded-full"
-                size="sm"
-                variant="outline"
-              >
-                <Link href="/lobby">
-                  <ChevronLeft className="size-4" /> Back to hub
-                </Link>
-              </Button>
+              <span className="text-sm text-foreground/70">Current game:</span>
             </div>
 
-            <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
+            <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <SurfaceCardTitle className="text-3xl sm:text-4xl">
                   {snapshot.lobby.selectedGame}
                 </SurfaceCardTitle>
               </div>
-
-              <div className="flex flex-wrap items-stretch gap-4">
-                <div className="rounded-3xl border border-foreground/10 bg-background/70 px-5 py-4 text-right">
-                  <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-                    Active players
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold text-foreground">
-                    {snapshot.lobby.activePlayerCount}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-3 text-xs text-foreground/65 uppercase tracking-[0.18em] font-mono">
-              <span className="rounded-full border border-foreground/12 bg-background/75 px-3 py-2">
-                Round {snapshot.lobby.currentRound}
-              </span>
-              <span className="rounded-full border border-foreground/12 bg-background/75 px-3 py-2">
-                {isHost ? "Host controls enabled" : "Player view"}
-              </span>
-              {viewerPlayer.joinedDuringState === "Playing" ? (
-                <span className="rounded-full border border-foreground/12 bg-background/75 px-3 py-2">
-                  Late joiner
-                </span>
-              ) : null}
             </div>
 
             {actionError ? (
@@ -483,9 +465,6 @@ export default function LobbyRoomPage() {
 
           <SurfaceCard>
             <div>
-              <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-                Live lobby state
-              </p>
               <div className="mt-4 flex items-start gap-3">
                 {snapshot.lobby.state === "Creation" ? (
                   <SparklesIcon className="text-primary size-6" />
@@ -577,6 +556,51 @@ export default function LobbyRoomPage() {
                           </Button>
                         </div>
                       </label>
+                    ) : isImageGame ? (
+                      <label
+                        className="block max-w-xs space-y-2"
+                        htmlFor="image-game-round-count"
+                      >
+                        <span className="text-sm font-medium text-foreground/80">
+                          Image game rounds
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <LobbyInput
+                            id="image-game-round-count"
+                            inputMode="numeric"
+                            onChange={(event) =>
+                              setTextGameRoundCountDraft(event.target.value)
+                            }
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={textGameRoundCountDraft}
+                          />
+                          <Button
+                            className="rounded-full px-5"
+                            disabled={pendingAction === "image-settings"}
+                            onClick={() =>
+                              void runAction("image-settings", async () => {
+                                await updateImageGameSettings({
+                                  lobbyId,
+                                  roundCount: Number(textGameRoundCountDraft),
+                                });
+                              })
+                            }
+                            type="button"
+                            variant="outline"
+                          >
+                            {pendingAction === "image-settings" ? (
+                              <>
+                                <Loader2Icon className="size-4 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              "Save"
+                            )}
+                          </Button>
+                        </div>
+                      </label>
                     ) : null}
 
                     <Button
@@ -586,6 +610,11 @@ export default function LobbyRoomPage() {
                         void runAction("start", async () => {
                           if (isTextGame) {
                             await startTextGame({ lobbyId });
+                            return;
+                          }
+
+                          if (isImageGame) {
+                            await startImageGame({ lobbyId });
                             return;
                           }
 
@@ -600,6 +629,8 @@ export default function LobbyRoomPage() {
                         </>
                       ) : isTextGame ? (
                         "Start text game"
+                      ) : isImageGame ? (
+                        "Start image game"
                       ) : (
                         "Start round"
                       )}
@@ -968,21 +999,7 @@ export default function LobbyRoomPage() {
                 </div>
               )}
             </SurfaceCard>
-          ) : (
-            <SurfaceCard>
-              <p className="font-mono text-[0.7rem] tracking-[0.24em] text-foreground/60 uppercase">
-                Player note
-              </p>
-              <SurfaceCardTitle className="mt-4">
-                Your controls depend on the host.
-              </SurfaceCardTitle>
-              <p className="mt-4 text-sm leading-6 text-foreground/75 sm:text-base">
-                During Creation you can vote on the game. In Playing and
-                Completion, you keep a synchronized view of the roster and
-                results but cannot access host-only mutations.
-              </p>
-            </SurfaceCard>
-          )}
+          ) : null}
         </div>
       </section>
     </main>

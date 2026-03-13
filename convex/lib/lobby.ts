@@ -5,6 +5,7 @@ export const PLACEHOLDER_GAMES = [
   "Pick image that suits a situation",
   "Pick text that suits a situation",
 ] as const;
+export const IMAGE_GAME_NAME = "Pick image that suits a situation" as const;
 export const TEXT_GAME_NAME = "Pick text that suits a situation" as const;
 export const DEFAULT_TEXT_GAME_ROUND_COUNT = 10;
 export const MAX_TEXT_GAME_ROUND_COUNT = 20;
@@ -96,6 +97,10 @@ export function sanitizeSummary(summary: string) {
 
 export function sanitizeTextGameAnswer(answer: string) {
   return answer.trim().replace(/\s+/g, " ").slice(0, 160);
+}
+
+export function sanitizeImageGamePrompt(prompt: string) {
+  return prompt.trim().replace(/\s+/g, " ").slice(0, 240);
 }
 
 export function deriveJoinCode(seed: string, attempt = 0) {

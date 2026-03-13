@@ -10,11 +10,15 @@ import {
   TrophyIcon,
   UsersIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  generateImagePreview,
+  submitGeneratedPreview,
+} from "@/app/game/image-game/submitPrompt";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
-import { SubmissionProgressList } from "@/components/game/submission-progress-list";
 import { PresentStageShell } from "@/components/game/present-stage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +26,13 @@ import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api, type Id } from "@/lib/convex";
 import { cn } from "@/lib/utils";
 
-type GameSnapshot = FunctionReturnType<typeof api.textGame.getGameState>;
+type GameSnapshot = FunctionReturnType<typeof api.imageGame.getGameState>;
+type GeneratedPreview = {
+  prompt: string;
+  mediaType: string;
+  storageId: Id<"_storage">;
+  imageUrl: string;
+};
 
 function LoadingState() {
   return (
@@ -30,7 +40,7 @@ function LoadingState() {
       <SurfaceCard className="w-full text-center">
         <Loader2Icon className="mx-auto size-6 animate-spin text-primary" />
         <SurfaceCardTitle className="mt-5 text-3xl">
-          Syncing text game...
+          Syncing image game...
         </SurfaceCardTitle>
       </SurfaceCard>
     </main>
@@ -54,6 +64,76 @@ function SignedOutState() {
         </div>
       </SurfaceCard>
     </main>
+  );
+}
+
+function statusTone(state: string) {
+  switch (state) {
+    case "Submitted":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-400";
+    case "Target":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-400";
+    case "Spectating":
+    case "AiExcluded":
+      return "border-foreground/15 bg-foreground/5 text-foreground/60";
+    default:
+      return "border-foreground/15 bg-foreground/5 text-foreground/80";
+  }
+}
+
+function ProgressList({
+  progress,
+}: {
+  progress: NonNullable<GameSnapshot["round"]>["progress"];
+}) {
+  type States =
+    | "Submitted"
+    | "Pending"
+    | "Target"
+    | "Spectating"
+    | "AiExcluded";
+
+  /** When state is "PENDING" order is 0,
+   *  when state is "Submitted" order is 1,
+   *  when state is "Target" order is 2,
+   *  when state is "Spectating" order is 3,
+   *  when state is "AiExcluded" order is 4. */
+  function progressOrder(a: States) {
+    switch (a) {
+      case "Pending":
+        return 0;
+      case "Submitted":
+        return 1;
+      case "Target":
+        return 2;
+      case "Spectating":
+        return 3;
+      case "AiExcluded":
+        return 4;
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {progress
+        .toSorted((a, b) => progressOrder(a.state) - progressOrder(b.state))
+        .map((entry) => (
+          <div
+            key={entry.playerId}
+            className={cn(
+              "flex items-center gap-2 rounded-xl border px-3 py-2",
+              statusTone(entry.state),
+            )}
+          >
+            <span className="max-w-[140px] truncate text-sm font-medium">
+              {entry.displayName}
+            </span>
+            <span className="text-[0.65rem] font-bold uppercase tracking-[0.15em] opacity-60">
+              {entry.state}
+            </span>
+          </div>
+        ))}
+    </div>
   );
 }
 
@@ -253,15 +333,29 @@ function GenerateStage({
   pendingAction: string | null;
   runAction: (actionKey: string, operation: () => Promise<void>) => void;
 }) {
-  const [answerDraft, setAnswerDraft] = useState("");
-  const submitAnswer = useMutation(api.textGame.submitAnswer);
-  const advanceToJudge = useMutation(api.textGame.advanceToJudge);
+  const [promptDraft, setPromptDraft] = useState("");
+  const [preview, setPreview] = useState<GeneratedPreview | null>(null);
+  const advanceToJudge = useMutation(api.imageGame.advanceToJudge);
+  const roundKey = `${snapshot.session._id}:${snapshot.round._id}`;
 
   useEffect(() => {
-    if (snapshot.round.viewerSubmission?.answer) {
-      setAnswerDraft(snapshot.round.viewerSubmission.answer);
+    if (snapshot.round.viewerSubmission?.prompt) {
+      setPromptDraft(snapshot.round.viewerSubmission.prompt);
     }
-  }, [snapshot.round.viewerSubmission?.answer]);
+  }, [snapshot.round.viewerSubmission?.prompt]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>This effect is intentionally not exhaustive; it only depends on roundKey.</explanation>
+  useEffect(() => {
+    setPreview(null);
+  }, [roundKey]);
+
+  useEffect(() => {
+    if (snapshot.round.viewerSubmission) {
+      setPreview(null);
+    }
+  }, [snapshot.round.viewerSubmission]);
+
+  const previewImageUrl = preview?.imageUrl ?? null;
 
   return (
     <div className="mt-8 border-t border-foreground/10 pt-8">
@@ -270,37 +364,121 @@ function GenerateStage({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            void runAction("submit", async () => {
-              await submitAnswer({ lobbyId, answer: answerDraft });
+            void runAction("generate", async () => {
+              const nextPreview = await generateImagePreview({
+                lobbyId,
+                prompt: promptDraft,
+              });
+              setPreview(nextPreview);
             });
           }}
         >
-          <label className="block space-y-2" htmlFor="text-answer">
+          <label className="block space-y-2" htmlFor="image-prompt">
             <span className="text-sm font-medium text-foreground/80">
-              Your answer
+              Your prompt
             </span>
             <LobbyTextarea
-              id="text-answer"
-              onChange={(event) => setAnswerDraft(event.target.value)}
-              placeholder="Write a sharp, funny, or surprisingly accurate answer."
-              value={answerDraft}
+              id="image-prompt"
+              onChange={(event) => setPromptDraft(event.target.value)}
+              placeholder="Describe an image that fits the situation."
+              value={promptDraft}
             />
           </label>
 
-          <Button
-            className="rounded-full px-6"
-            disabled={pendingAction === "submit"}
-            type="submit"
-          >
-            {pendingAction === "submit" ? (
-              <>
-                <Loader2Icon className="size-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              "Submit answer"
-            )}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              className="rounded-full px-6"
+              disabled={pendingAction === "generate"}
+              type="submit"
+            >
+              {pendingAction === "generate" ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                "Generate image"
+              )}
+            </Button>
+            {preview ? (
+              <Button
+                className="rounded-full px-6"
+                disabled={pendingAction === "generate"}
+                onClick={() =>
+                  void runAction("generate", async () => {
+                    const nextPreview = await generateImagePreview({
+                      lobbyId,
+                      prompt: promptDraft,
+                    });
+                    setPreview(nextPreview);
+                  })
+                }
+                type="button"
+                variant="outline"
+              >
+                {pendingAction === "generate" ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  "Regenerate"
+                )}
+              </Button>
+            ) : null}
+            <Button
+              className="rounded-full px-6"
+              disabled={pendingAction === "submitPreview" || preview === null}
+              onClick={() =>
+                void runAction("submitPreview", async () => {
+                  if (preview === null) {
+                    throw new Error("Generate an image before submitting it.");
+                  }
+
+                  await submitGeneratedPreview({
+                    lobbyId,
+                    prompt: preview.prompt,
+                    storageId: preview.storageId,
+                    mediaType: preview.mediaType,
+                  });
+                  setPreview(null);
+                })
+              }
+              type="button"
+            >
+              {pendingAction === "submitPreview" ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit image"
+              )}
+            </Button>
+          </div>
+
+          {preview ? (
+            <div className="rounded-3xl border border-primary/25 bg-primary/5 p-5">
+              <p className="text-sm font-medium text-foreground/80">
+                Preview image
+              </p>
+
+              {/** biome-ignore lint/performance/noImgElement: <explanation>This is a static image URL, not user-generated content.</explanation> */}
+              <img
+                alt="Generated preview"
+                className="mt-3 aspect-square w-full rounded-2xl border border-foreground/10 object-cover"
+                src={previewImageUrl ?? ""}
+              />
+              <p className="mt-4 text-sm leading-6 text-foreground/70">
+                <span className="font-medium text-foreground/80">Prompt:</span>{" "}
+                {preview.prompt}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-foreground/60">
+                You can keep regenerating until you find the one you want to
+                submit.
+              </p>
+            </div>
+          ) : null}
         </form>
       ) : snapshot.viewer.role === "Judge" ? (
         <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl border border-amber-500/25 bg-amber-500/5 px-5 py-10 text-center">
@@ -314,17 +492,32 @@ function GenerateStage({
             </span>
           </div>
           <p className="max-w-[320px] text-sm leading-6 text-foreground/70">
-            Players are generating answers right now. Get ready to score their
-            anonymous submissions!
+            Players are generating images right now. Get ready to score their
+            anonymous submissions.
           </p>
         </div>
       ) : snapshot.round.viewerSubmission ? (
         <div className="rounded-3xl border border-emerald-500/25 bg-emerald-500/10 p-5">
           <p className="text-sm font-medium text-foreground/80">
-            Submitted answer
+            Submitted image
           </p>
-          <p className="mt-3 text-base leading-7 text-foreground">
-            {snapshot.round.viewerSubmission.answer}
+          {snapshot.round.viewerSubmission.imageUrl ? (
+            <Image
+              alt="Anonymous submission"
+              className="mt-3 w-full aspect-square rounded-2xl border border-foreground/10 object-cover"
+              src={snapshot.round.viewerSubmission.imageUrl}
+              width={1024}
+              height={1024}
+            />
+          ) : (
+            <div className="mt-4 flex items-center gap-2 text-foreground/60">
+              <Loader2Icon className="size-4 animate-spin" />
+              <span className="text-sm">Fetching image...</span>
+            </div>
+          )}
+          <p className="mt-4 text-sm leading-6 text-foreground/70">
+            <span className="font-medium text-foreground/80">Prompt:</span>{" "}
+            {snapshot.round.viewerSubmission.prompt}
           </p>
         </div>
       ) : (
@@ -390,8 +583,8 @@ function JudgeStage({
   const [savingBySubmissionId, setSavingBySubmissionId] = useState<
     Record<string, boolean>
   >({});
-  const rateSubmission = useMutation(api.textGame.rateSubmission);
-  const advanceToPresent = useMutation(api.textGame.advanceToPresent);
+  const rateSubmission = useMutation(api.imageGame.rateSubmission);
+  const advanceToPresent = useMutation(api.imageGame.advanceToPresent);
 
   useEffect(() => {
     if (!snapshot.round.judgeSubmissions.length) {
@@ -448,7 +641,7 @@ function JudgeStage({
     try {
       await rateSubmission({
         lobbyId,
-        submissionId: submissionId as Id<"textGameSubmissions">,
+        submissionId: submissionId as Id<"imageGameSubmissions">,
         ...update,
       });
     } catch (error) {
@@ -486,7 +679,7 @@ function JudgeStage({
             return (
               <div
                 key={submission.submissionId}
-                className="relative rounded-3xl border border-foreground/10 bg-background/75 p-5"
+                className="relative rounded-3xl border border-foreground/10 bg-background/75 p-5 gap-4 grid md:grid-cols-2"
               >
                 {isSaving ? (
                   <div className="absolute right-4 top-4 text-foreground/60">
@@ -494,10 +687,29 @@ function JudgeStage({
                     <span className="sr-only">Saving...</span>
                   </div>
                 ) : null}
-                <p className="mt-3 text-base leading-7 text-foreground">
-                  {submission.answer}
-                </p>
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
+
+                {submission.imageUrl ? (
+                  <Image
+                    alt="Anonymous submission"
+                    className="mt-3 w-full max-w-80 aspect-square md:size-80 rounded-2xl border border-foreground/10 object-cover"
+                    src={submission.imageUrl}
+                    width={1024}
+                    height={1024}
+                  />
+                ) : (
+                  <div className="mt-3 flex items-center gap-2 text-foreground/60">
+                    <Loader2Icon className="size-4 animate-spin" />
+                    <span className="text-sm">Image unavailable</span>
+                  </div>
+                )}
+
+                <div className="mt-5 space-y-6">
+                  <p className="mt-4 text-sm leading-6 text-foreground/70">
+                    <span className="font-medium text-foreground/80">
+                      Prompt:
+                    </span>{" "}
+                    {submission.prompt}
+                  </p>
                   <RatingSelector
                     label="Correctness"
                     onChange={(value) => {
@@ -610,7 +822,7 @@ function PresentStage({
   runAction: (actionKey: string, operation: () => Promise<void>) => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
-  const advanceAfterPresent = useMutation(api.textGame.advanceAfterPresent);
+  const advanceAfterPresent = useMutation(api.imageGame.advanceAfterPresent);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -652,49 +864,76 @@ function PresentStage({
   return (
     <PresentStageShell
       countdownSeconds={countdownSeconds}
-      description="The room can take in the best line, see who wrote it, and catch the score split before the next prompt drops."
-      eyebrow="Results spotlight"
-      title="The round lands here."
+      description="Give the lobby a beat to study the top image, revisit the prompt, and catch the score split before the next generation round starts."
+      eyebrow="Winning gallery"
+      title="The image reveal gets the room's full attention."
     >
       {snapshot.round.winners.length > 0 ? (
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {snapshot.round.winners.map((winner, index) => (
             <motion.article
               key={winner.submissionId}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              className="rounded-[1.35rem] border border-foreground/10 bg-background/82 p-4 shadow-[0_20px_60px_-42px_color-mix(in_oklch,var(--color-primary)_45%,transparent)] sm:p-5"
+              className="grid gap-4 rounded-[1.45rem] border border-foreground/10 bg-background/82 p-4 shadow-[0_24px_80px_-48px_color-mix(in_oklch,var(--color-primary)_42%,transparent)] sm:p-5 lg:grid-cols-[minmax(0,0.92fr)_minmax(15rem,0.88fr)] lg:items-start"
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
               transition={{
-                duration: 0.45,
+                duration: 0.48,
                 delay: 0.08 + index * 0.08,
                 ease: [0.16, 1, 0.3, 1],
               }}
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="rounded-full border border-primary/18 bg-primary/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-foreground/70">
-                  Winning answer
-                </span>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/45">
-                  {winner.authorDisplayName}
-                </p>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="rounded-full border border-primary/18 bg-primary/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-foreground/70">
+                    Winning image
+                  </span>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/45">
+                    {winner.authorDisplayName}
+                  </p>
+                </div>
+
+                <div className="overflow-hidden rounded-[1.15rem] border border-foreground/10 bg-background/60">
+                  {winner.imageUrl ? (
+                    // biome-ignore lint/performance/noImgElement: <explanation>This is a static image URL, not user-generated content.</explanation>
+                    <img
+                      alt="Winning submission"
+                      className="aspect-square w-full object-cover"
+                      src={winner.imageUrl}
+                    />
+                  ) : (
+                    <div className="flex min-h-56 items-center justify-center gap-2 text-foreground/60">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      <span className="text-sm">Image unavailable</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="mt-4 max-w-3xl text-xl leading-tight text-foreground sm:text-[1.7rem] sm:leading-[1.08]">
-                {winner.answer}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs text-foreground/70 sm:text-sm">
-                <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
-                  {winner.correctnessStars}/5 correctness
-                </span>
-                <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
-                  {winner.creativityStars}/5 creativity
-                </span>
+
+              <div className="flex h-full flex-col justify-between gap-4">
+                <div>
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-foreground/48">
+                    Prompt
+                  </p>
+                  <p className="mt-2.5 text-lg leading-tight text-foreground sm:text-xl">
+                    {winner.prompt}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs text-foreground/70 sm:text-sm">
+                  <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
+                    {winner.correctnessStars}/5 correctness
+                  </span>
+                  <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
+                    {winner.creativityStars}/5 creativity
+                  </span>
+                </div>
               </div>
             </motion.article>
           ))}
         </div>
       ) : (
         <div className="rounded-[1.35rem] border border-dashed border-foreground/15 bg-background/72 px-4 py-6 text-sm leading-6 text-foreground/72 sm:px-5">
-          No answers were scored this round.
+          No images were scored this round.
         </div>
       )}
 
@@ -723,17 +962,16 @@ function PresentStage({
   );
 }
 
-export default function TextGamePage() {
+export default function ImageGamePage() {
   const params = useParams<{ lobbyId: string }>();
   const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const lobbyId = params.lobbyId as Id<"lobbies">;
   const snapshot = useQuery(
-    api.textGame.getGameState,
+    api.imageGame.getGameState,
     isAuthenticated ? { lobbyId } : "skip",
   );
 
-  const pokePlayer = useMutation(api.textGame.pokePlayer);
   const resetLobby = useMutation(api.lobbies.resetLobby);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -741,7 +979,7 @@ export default function TextGamePage() {
   useEffect(() => {
     if (
       snapshot &&
-      snapshot.lobby.selectedGame !== "Pick text that suits a situation"
+      snapshot.lobby.selectedGame !== "Pick image that suits a situation"
     ) {
       router.replace(`/lobby/${lobbyId}`);
     }
@@ -763,7 +1001,7 @@ export default function TextGamePage() {
       setActionError(
         error instanceof Error
           ? error.message
-          : "That text-game action could not be completed.",
+          : "That image-game action could not be completed.",
       );
     } finally {
       setPendingAction(null);
@@ -857,19 +1095,7 @@ export default function TextGamePage() {
               </SurfaceCardTitle>
             </div>
             <div className="mt-6">
-              <SubmissionProgressList
-                onPoke={(playerId) =>
-                  void runAction(`poke:${playerId}`, async () => {
-                    await pokePlayer({
-                      lobbyId,
-                      playerId: playerId as Id<"lobbyPlayers">,
-                    });
-                  })
-                }
-                pendingAction={pendingAction}
-                progress={snapshot.round.progress}
-                viewerPlayerId={snapshot.viewer.playerId}
-              />
+              <ProgressList progress={snapshot.round.progress} />
             </div>
           </SurfaceCard>
 
@@ -888,8 +1114,8 @@ export default function TextGamePage() {
           {snapshot.lobby.state === "Completion" ? (
             <SurfaceCard>
               <p className="mt-4 text-sm leading-6 text-foreground/75">
-                The text game is finished. The host can reset the lobby to start
-                a new setup.
+                The image game is finished. The host can reset the lobby to
+                start a new setup.
               </p>
               {snapshot.viewer.isHost ? (
                 <Button

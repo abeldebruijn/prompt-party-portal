@@ -486,6 +486,25 @@ export const resetLobby = mutation({
       )
     ).flat();
 
+    const imageSessions = await ctx.db
+      .query("imageGameSessions")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const imageRounds = await ctx.db
+      .query("imageGameRounds")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const imageSubmissions = (
+      await Promise.all(
+        imageRounds.map((round) =>
+          ctx.db
+            .query("imageGameSubmissions")
+            .withIndex("roundId", (query) => query.eq("roundId", round._id))
+            .collect(),
+        ),
+      )
+    ).flat();
+
     await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
     const pokes = await ctx.db
       .query("playerPokes")
@@ -498,6 +517,19 @@ export const resetLobby = mutation({
     );
     await Promise.all(rounds.map((round) => ctx.db.delete(round._id)));
     await Promise.all(sessions.map((session) => ctx.db.delete(session._id)));
+
+    await Promise.all(
+      imageSubmissions.map((submission) =>
+        ctx.storage.delete(submission.imageStorageId),
+      ),
+    );
+    await Promise.all(
+      imageSubmissions.map((submission) => ctx.db.delete(submission._id)),
+    );
+    await Promise.all(imageRounds.map((round) => ctx.db.delete(round._id)));
+    await Promise.all(
+      imageSessions.map((session) => ctx.db.delete(session._id)),
+    );
 
     await ctx.db.patch(lobby._id, {
       state: "Creation",

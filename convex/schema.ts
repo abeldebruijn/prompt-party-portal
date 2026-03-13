@@ -168,6 +168,51 @@ const schema = defineSchema({
   })
     .index("roundId", ["roundId"])
     .index("roundIdAndAuthorPlayerId", ["roundId", "authorPlayerId"]),
+
+  imageGameSessions: defineTable({
+    lobbyId: v.id("lobbies"),
+    roundCount: v.number(),
+    promptIds: v.array(v.id("textGamePrompts")),
+    currentRoundNumber: v.number(),
+    status: v.union(v.literal("InProgress"), v.literal("Completed")),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  }).index("lobbyId", ["lobbyId"]),
+
+  imageGameRounds: defineTable({
+    sessionId: v.id("imageGameSessions"),
+    lobbyId: v.id("lobbies"),
+    roundNumber: v.number(),
+    promptId: v.id("textGamePrompts"),
+    promptText: v.string(),
+    targetPlayerId: v.id("lobbyPlayers"),
+    eligiblePlayerIds: v.array(v.id("lobbyPlayers")),
+    stage: v.union(
+      v.literal("Generate"),
+      v.literal("Judge"),
+      v.literal("Present"),
+    ),
+    stageStartedAt: v.number(),
+    presentEndsAt: v.optional(v.number()),
+  })
+    .index("sessionId", ["sessionId"])
+    .index("sessionIdAndRoundNumber", ["sessionId", "roundNumber"])
+    .index("lobbyId", ["lobbyId"]),
+
+  imageGameSubmissions: defineTable({
+    roundId: v.id("imageGameRounds"),
+    authorPlayerId: v.id("lobbyPlayers"),
+    prompt: v.string(),
+    imageStorageId: v.id("_storage"),
+    imageMediaType: v.string(),
+    submittedAt: v.number(),
+    correctnessStars: v.optional(v.number()),
+    creativityStars: v.optional(v.number()),
+    totalScore: v.optional(v.number()),
+    judgedAt: v.optional(v.number()),
+  })
+    .index("roundId", ["roundId"])
+    .index("roundIdAndAuthorPlayerId", ["roundId", "authorPlayerId"]),
 });
 
 export default schema;
