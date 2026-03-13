@@ -489,4 +489,88 @@ describe("convex/textGame", () => {
       expect.objectContaining({ displayName: "Bob", rank: 3, score: 2 }),
     ]);
   });
+
+  it("lets the host skip to present during judge without finished ratings", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createTextGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.textGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.textGame.startGame, { lobbyId });
+    await member.client.mutation(api.textGame.submitAnswer, {
+      lobbyId,
+      answer: "Unrated answer",
+    });
+
+    const transition = await host.client.mutation(api.textGame.skipToPresent, {
+      lobbyId,
+    });
+    const state = await host.client.query(api.textGame.getGameState, {
+      lobbyId,
+    });
+
+    expect(transition.stage).toBe("Present");
+    expect(state.round?.stage).toBe("Present");
+  });
+
+  it("blocks non-host skip to present and normal advance without ratings", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createTextGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.textGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.textGame.startGame, { lobbyId });
+    await member.client.mutation(api.textGame.submitAnswer, {
+      lobbyId,
+      answer: "Needs rating first",
+    });
+
+    await expect(
+      member.client.mutation(api.textGame.skipToPresent, { lobbyId }),
+    ).rejects.toThrow("Only the lobby host can do that.");
+
+    await expect(
+      host.client.mutation(api.textGame.advanceToPresent, { lobbyId }),
+    ).rejects.toThrow("Please rate all submissions before continuing.");
+  });
+
+  it("rejects text-game host skip outside judge and is idempotent in present", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createTextGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.textGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.textGame.startGame, { lobbyId });
+
+    await expect(
+      host.client.mutation(api.textGame.skipToPresent, { lobbyId }),
+    ).rejects.toThrow("Rounds can only advance to results during Judge.");
+
+    await host.client.mutation(api.textGame.advanceToJudge, { lobbyId });
+
+    const firstSkip = await host.client.mutation(api.textGame.skipToPresent, {
+      lobbyId,
+    });
+    const secondSkip = await host.client.mutation(api.textGame.skipToPresent, {
+      lobbyId,
+    });
+
+    expect(firstSkip.stage).toBe("Present");
+    expect(secondSkip.stage).toBe("Present");
+  });
 });

@@ -5,6 +5,7 @@ export {
   generateUploadUrl,
   pokePlayer,
   rateSubmission,
+  skipToPresent,
   startGame,
   submitGeneratedImage,
   updateSettings,

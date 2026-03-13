@@ -474,6 +474,44 @@ export const advanceToPresent = mutation({
     );
 
     if (!allRated) {
+      throw new Error("Please rate all submissions before continuing.");
+    }
+
+    const now = Date.now();
+    await moveRoundToPresent(ctx, round, now);
+
+    return { lobbyId: args.lobbyId, stage: "Present" as const };
+  },
+});
+
+export const skipToPresent = mutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+  },
+  handler: async (ctx, args) => {
+    await requireTextGameHost(ctx, args.lobbyId);
+    const session = await getActiveSession(ctx, args.lobbyId);
+
+    if (session === null || session.status !== "InProgress") {
+      throw new Error("The text game is not currently running.");
+    }
+
+    const round = await getCurrentRound(
+      ctx,
+      session._id,
+      session.currentRoundNumber,
+    );
+
+    if (round === null) {
+      throw new Error("The current text-game round could not be found.");
+    }
+
+    if (round.stage === "Present") {
+      return { lobbyId: args.lobbyId, stage: "Present" as const };
+    }
+
+    if (round.stage !== "Judge") {
+      throw new Error("Rounds can only advance to results during Judge.");
     }
 
     const now = Date.now();

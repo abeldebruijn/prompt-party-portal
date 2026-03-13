@@ -694,4 +694,88 @@ describe("convex/imageGame", () => {
     expect(completion.lobby.state).toBe("Completion");
     expect(completion.leaderboard).toHaveLength(3);
   });
+
+  it("lets the host skip to present during judge without finished ratings", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createImageGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.imageGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.imageGame.startGame, { lobbyId });
+    await submitPromptAsGeneratedImage(t, member.client, {
+      lobbyId,
+      prompt: "Unrated image prompt",
+    });
+
+    const transition = await host.client.mutation(api.imageGame.skipToPresent, {
+      lobbyId,
+    });
+    const state = await host.client.query(api.imageGame.getGameState, {
+      lobbyId,
+    });
+
+    expect(transition.stage).toBe("Present");
+    expect(state.round?.stage).toBe("Present");
+  });
+
+  it("blocks non-host image skip to present and keeps judge ratings required", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createImageGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.imageGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.imageGame.startGame, { lobbyId });
+    await submitPromptAsGeneratedImage(t, member.client, {
+      lobbyId,
+      prompt: "Still unrated",
+    });
+
+    await expect(
+      member.client.mutation(api.imageGame.skipToPresent, { lobbyId }),
+    ).rejects.toThrow("Only the lobby host can do that.");
+
+    await expect(
+      host.client.mutation(api.imageGame.advanceToPresent, { lobbyId }),
+    ).rejects.toThrow("Please rate all submissions before continuing.");
+  });
+
+  it("rejects image-game host skip outside judge and is idempotent in present", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createImageGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.imageGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.imageGame.startGame, { lobbyId });
+
+    await expect(
+      host.client.mutation(api.imageGame.skipToPresent, { lobbyId }),
+    ).rejects.toThrow("Rounds can only advance to results during Judge.");
+
+    await host.client.mutation(api.imageGame.advanceToJudge, { lobbyId });
+
+    const firstSkip = await host.client.mutation(api.imageGame.skipToPresent, {
+      lobbyId,
+    });
+    const secondSkip = await host.client.mutation(api.imageGame.skipToPresent, {
+      lobbyId,
+    });
+
+    expect(firstSkip.stage).toBe("Present");
+    expect(secondSkip.stage).toBe("Present");
+  });
 });

@@ -4,6 +4,7 @@ export {
   advanceToPresent,
   pokePlayer,
   rateSubmission,
+  skipToPresent,
   startGame,
   submitAnswer,
   updateSettings,
