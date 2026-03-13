@@ -1,8 +1,9 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { BellRingIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +74,8 @@ function ProgressRow({
   );
   const isViewer = entry.playerId === viewerPlayerId;
   const canPoke = entry.state === "Pending" && !isViewer;
+  const showViewerAlert = isViewer && entry.lastPoke !== null;
+  const latestPokerName = entry.lastPoke?.pokedByDisplayName ?? null;
 
   useEffect(() => {
     const latestPokeAt = entry.lastPoke?.createdAt ?? null;
@@ -91,38 +94,83 @@ function ProgressRow({
       return;
     }
 
+    if (latestPokerName === null) {
+      previousPokeAt.current = latestPokeAt;
+      return;
+    }
+
     previousPokeAt.current = latestPokeAt;
     setIsNotified(true);
-    const timeoutId = window.setTimeout(() => setIsNotified(false), 1200);
+    toast("You were poked", {
+      description: `${latestPokerName} is waiting on your submission.`,
+      duration: 2600,
+      position: "top-center",
+    });
+    const timeoutId = window.setTimeout(() => setIsNotified(false), 1800);
 
     return () => window.clearTimeout(timeoutId);
-  }, [entry.lastPoke?.createdAt, isViewer]);
+  }, [entry.lastPoke?.createdAt, isViewer, latestPokerName]);
 
   return (
     <motion.div
+      initial={false}
       animate={
         reduceMotion
           ? { opacity: 1 }
           : isNotified
             ? {
-                x: [0, -5, 4, -3, 0],
-                scale: [1, 1.015, 1],
+                x: [0, -8, 6, -4, 0],
+                y: [0, -1, 0],
+                scale: [1, 1.028, 0.995, 1],
+                boxShadow: [
+                  "0 0 0 0 rgba(0,0,0,0)",
+                  "0 0 0 6px rgba(245, 158, 11, 0.16)",
+                  "0 18px 38px -24px rgba(245, 158, 11, 0.5)",
+                  "0 0 0 0 rgba(0,0,0,0)",
+                ],
               }
             : {
                 x: 0,
+                y: 0,
                 scale: 1,
+                boxShadow: "0 0 0 0 rgba(0,0,0,0)",
               }
       }
       transition={{
-        duration: reduceMotion ? 0.12 : 0.42,
-        ease: [0.22, 1, 0.36, 1],
+        duration: reduceMotion ? 0.12 : 0.56,
+        ease: [0.16, 1, 0.3, 1],
       }}
       className={cn(
-        "flex items-start justify-between gap-3 rounded-2xl border px-3 py-3",
+        "relative flex items-start justify-between gap-3 rounded-2xl border px-3 py-3 will-change-transform",
         statusTone(entry.state),
-        isNotified && "ring-2 ring-primary/30",
+        isNotified &&
+          "border-amber-500/55 bg-amber-500/12 ring-2 ring-amber-500/35",
       )}
     >
+      <AnimatePresence initial={false}>
+        {showViewerAlert ? (
+          <motion.div
+            animate={
+              reduceMotion
+                ? { opacity: 1 }
+                : isNotified
+                  ? { opacity: 1, y: 0, scale: 1 }
+                  : { opacity: 0.92, y: 0, scale: 1 }
+            }
+            className="absolute right-3 top-3 rounded-full border border-amber-500/35 bg-amber-500/14 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] text-amber-900 dark:text-amber-300"
+            exit={{ opacity: 0, y: -6 }}
+            initial={
+              reduceMotion
+                ? { opacity: 1 }
+                : { opacity: 0, y: -10, scale: 0.94 }
+            }
+            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+          >
+            Poke received
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="max-w-[140px] truncate text-sm font-medium">
@@ -139,10 +187,51 @@ function ProgressRow({
         </div>
 
         {entry.lastPoke ? (
-          <div className="mt-1 flex items-center gap-1.5 text-xs opacity-80">
-            <BellRingIcon className="size-3.5" />
-            <span>Poked by {entry.lastPoke.pokedByDisplayName}</span>
-          </div>
+          <motion.div
+            animate={
+              reduceMotion
+                ? { opacity: 1 }
+                : isNotified
+                  ? { opacity: 1, y: [0, -1, 0] }
+                  : { opacity: 0.88, y: 0 }
+            }
+            className={cn(
+              "mt-1 flex items-center gap-1.5 text-xs",
+              showViewerAlert
+                ? "font-medium text-amber-900 dark:text-amber-300"
+                : "opacity-80",
+            )}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <motion.span
+              animate={
+                reduceMotion
+                  ? { scale: 1 }
+                  : isNotified
+                    ? { rotate: [-10, 14, -8, 0], scale: [1, 1.18, 1] }
+                    : { rotate: 0, scale: 1 }
+              }
+              className="flex items-center justify-center"
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <BellRingIcon className="size-3.5" />
+            </motion.span>
+            <motion.span
+              animate={
+                reduceMotion
+                  ? { scale: 1, opacity: 1 }
+                  : isNotified
+                    ? { scale: [1, 1.35, 1], opacity: [0.7, 1, 0.82] }
+                    : { scale: 1, opacity: 0.72 }
+              }
+              className="size-1.5 rounded-full bg-current"
+              transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+            />
+            <span>
+              Poked by {entry.lastPoke.pokedByDisplayName}
+              {isViewer ? " just now" : ""}
+            </span>
+          </motion.div>
         ) : null}
       </div>
 
