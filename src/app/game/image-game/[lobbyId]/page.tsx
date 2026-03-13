@@ -16,7 +16,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { submitPrompt as submitPromptServerAction } from "@/app/game/image-game/submitPrompt";
+import {
+  generateImagePreview,
+  submitGeneratedPreview,
+} from "@/app/game/image-game/submitPrompt";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,12 @@ import { api, type Id } from "@/lib/convex";
 import { cn } from "@/lib/utils";
 
 type GameSnapshot = FunctionReturnType<typeof api.imageGame.getGameState>;
+type GeneratedPreview = {
+  prompt: string;
+  mediaType: string;
+  storageId: Id<"_storage">;
+  imageUrl: string;
+};
 
 function LoadingState() {
   return (
@@ -326,13 +335,27 @@ function GenerateStage({
   runAction: (actionKey: string, operation: () => Promise<void>) => void;
 }) {
   const [promptDraft, setPromptDraft] = useState("");
+  const [preview, setPreview] = useState<GeneratedPreview | null>(null);
   const advanceToJudge = useMutation(api.imageGame.advanceToJudge);
+  const roundKey = `${snapshot.session._id}:${snapshot.round._id}`;
 
   useEffect(() => {
     if (snapshot.round.viewerSubmission?.prompt) {
       setPromptDraft(snapshot.round.viewerSubmission.prompt);
     }
   }, [snapshot.round.viewerSubmission?.prompt]);
+
+  useEffect(() => {
+    setPreview(null);
+  }, [roundKey]);
+
+  useEffect(() => {
+    if (snapshot.round.viewerSubmission) {
+      setPreview(null);
+    }
+  }, [snapshot.round.viewerSubmission]);
+
+  const previewImageUrl = preview?.imageUrl ?? null;
 
   return (
     <div className="mt-8 border-t border-foreground/10 pt-8">
@@ -341,8 +364,12 @@ function GenerateStage({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            void runAction("submit", async () => {
-              await submitPromptServerAction({ lobbyId, prompt: promptDraft });
+            void runAction("generate", async () => {
+              const nextPreview = await generateImagePreview({
+                lobbyId,
+                prompt: promptDraft,
+              });
+              setPreview(nextPreview);
             });
           }}
         >
@@ -358,20 +385,98 @@ function GenerateStage({
             />
           </label>
 
-          <Button
-            className="rounded-full px-6"
-            disabled={pendingAction === "submit"}
-            type="submit"
-          >
-            {pendingAction === "submit" ? (
-              <>
-                <Loader2Icon className="size-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              "Generate image"
-            )}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              className="rounded-full px-6"
+              disabled={pendingAction === "generate"}
+              type="submit"
+            >
+              {pendingAction === "generate" ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                "Generate image"
+              )}
+            </Button>
+            {preview ? (
+              <Button
+                className="rounded-full px-6"
+                disabled={pendingAction === "generate"}
+                onClick={() =>
+                  void runAction("generate", async () => {
+                    const nextPreview = await generateImagePreview({
+                      lobbyId,
+                      prompt: promptDraft,
+                    });
+                    setPreview(nextPreview);
+                  })
+                }
+                type="button"
+                variant="outline"
+              >
+                {pendingAction === "generate" ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  "Regenerate"
+                )}
+              </Button>
+            ) : null}
+            <Button
+              className="rounded-full px-6"
+              disabled={pendingAction === "submitPreview" || preview === null}
+              onClick={() =>
+                void runAction("submitPreview", async () => {
+                  if (preview === null) {
+                    throw new Error("Generate an image before submitting it.");
+                  }
+
+                  await submitGeneratedPreview({
+                    lobbyId,
+                    prompt: preview.prompt,
+                    storageId: preview.storageId,
+                    mediaType: preview.mediaType,
+                  });
+                  setPreview(null);
+                })
+              }
+              type="button"
+            >
+              {pendingAction === "submitPreview" ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit image"
+              )}
+            </Button>
+          </div>
+
+          {preview ? (
+            <div className="rounded-3xl border border-primary/25 bg-primary/5 p-5">
+              <p className="text-sm font-medium text-foreground/80">
+                Preview image
+              </p>
+              <img
+                alt="Generated image preview"
+                className="mt-3 aspect-square w-full rounded-2xl border border-foreground/10 object-cover"
+                src={previewImageUrl ?? ""}
+              />
+              <p className="mt-4 text-sm leading-6 text-foreground/70">
+                <span className="font-medium text-foreground/80">Prompt:</span>{" "}
+                {preview.prompt}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-foreground/60">
+                You can keep regenerating until you find the one you want to
+                submit.
+              </p>
+            </div>
+          ) : null}
         </form>
       ) : snapshot.viewer.role === "Judge" ? (
         <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl border border-amber-500/25 bg-amber-500/5 px-5 py-10 text-center">
@@ -398,7 +503,7 @@ function GenerateStage({
             <Image
               alt="Anonymous submission"
               className="mt-3 w-full aspect-square rounded-2xl border border-foreground/10 object-cover"
-              src={submission.imageUrl}
+              src={snapshot.round.viewerSubmission.imageUrl}
               width={1024}
               height={1024}
             />

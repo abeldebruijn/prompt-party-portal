@@ -8,4 +8,4 @@ export {
   submitGeneratedImage,
   updateSettings,
 } from "./image_game/mutations";
-export { getGameState } from "./image_game/queries";
+export { getGameState, getPreviewImageUrl } from "./image_game/queries";

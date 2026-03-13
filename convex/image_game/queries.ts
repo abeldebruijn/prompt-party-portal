@@ -199,3 +199,13 @@ export const getGameState = query({
   },
 });
 
+export const getPreviewImageUrl = query({
+  args: {
+    lobbyId: v.id("lobbies"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    await requireImageGameMembership(ctx, args.lobbyId);
+    return await getSubmissionUrl(ctx, args.storageId);
+  },
+});

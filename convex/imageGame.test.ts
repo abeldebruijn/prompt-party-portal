@@ -244,6 +244,63 @@ describe("convex/imageGame", () => {
     expect(judgeState.round?.judgeSubmissions).toHaveLength(1);
   });
 
+  it("does not advance the round until a generated image is explicitly submitted", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createImageGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.imageGame.updateSettings, {
+      lobbyId,
+      roundCount: 1,
+    });
+    await host.client.mutation(api.imageGame.startGame, { lobbyId });
+
+    const uploadUrl = await member.client.mutation(api.imageGame.generateUploadUrl, {
+      lobbyId,
+    });
+
+    expect(uploadUrl).toContain("/api/storage/upload");
+
+    const generateState = await host.client.query(api.imageGame.getGameState, {
+      lobbyId,
+    });
+
+    expect(generateState.round?.stage).toBe("Generate");
+    expect(generateState.round?.submissionCount).toBe(0);
+
+    await submitPromptAsGeneratedImage(t, member.client, {
+      lobbyId,
+      prompt: "Colorful confetti exploding over a karaoke stage",
+    });
+
+    const judgeState = await host.client.query(api.imageGame.getGameState, {
+      lobbyId,
+    });
+
+    expect(judgeState.round?.stage).toBe("Judge");
+    expect(judgeState.round?.submissionCount).toBe(1);
+  });
+
+  it("returns a preview URL for a stored generated image", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createImageGameLobby(t);
+    const member = await createViewer(t, { name: "Member" });
+
+    await seedPrompts(t);
+    await member.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.imageGame.startGame, { lobbyId });
+
+    const storageId = await storeTestImage(t);
+    const previewUrl = await member.client.query(api.imageGame.getPreviewImageUrl, {
+      lobbyId,
+      storageId,
+    });
+
+    expect(previewUrl).toBeTruthy();
+  });
+
   it("can skip judge with zero submissions and complete idempotently after present", async () => {
     const t = createConvexTest();
     const { host, lobbyId, joinCode } = await createImageGameLobby(t);

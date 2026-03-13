@@ -4,6 +4,7 @@ import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { generateImage, gateway } from "ai";
 
+import { sanitizeImageGamePrompt } from "../../../../convex/lib/lobby";
 import { api, type Id } from "@/lib/convex-server";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL as string;
@@ -12,10 +13,17 @@ if (!convexUrl) {
   throw new Error("NEXT_PUBLIC_CONVEX_URL is required for Convex.");
 }
 
-export async function submitPrompt(args: {
-  lobbyId: Id<"lobbies">;
-  prompt: string;
-}) {
+function sanitizePromptOrThrow(prompt: string) {
+  const sanitized = sanitizeImageGamePrompt(prompt);
+
+  if (sanitized.length < 1) {
+    throw new Error("Submissions need at least one visible character.");
+  }
+
+  return sanitized;
+}
+
+async function createAuthenticatedClient() {
   const token = await convexAuthNextjsToken();
   if (!token) {
     throw new Error("You must be signed in to do that.");
@@ -23,15 +31,24 @@ export async function submitPrompt(args: {
 
   const client = new ConvexHttpClient(convexUrl);
   client.setAuth(token);
+  return client;
+}
 
-  const uploadUrl = await client.mutation(api.imageGame.generateUploadUrl, {
-    lobbyId: args.lobbyId,
-  });
+export async function generateImagePreview(args: {
+  lobbyId: Id<"lobbies">;
+  prompt: string;
+}) {
+  const client = await createAuthenticatedClient();
+  const prompt = sanitizePromptOrThrow(args.prompt);
 
   const { image } = await generateImage({
     model: gateway.image("openai/gpt-image-1-mini"),
-    prompt: args.prompt,
+    prompt,
     size: "1024x1024",
+  });
+
+  const uploadUrl = await client.mutation(api.imageGame.generateUploadUrl, {
+    lobbyId: args.lobbyId,
   });
 
   const uploadResponse = await fetch(uploadUrl, {
@@ -47,11 +64,41 @@ export async function submitPrompt(args: {
   }
 
   const uploadJson = (await uploadResponse.json()) as { storageId: string };
+  const storageId = uploadJson.storageId as unknown as Id<"_storage">;
+  const imageUrl = await client.query(api.imageGame.getPreviewImageUrl, {
+    lobbyId: args.lobbyId,
+    storageId,
+  });
+
+  if (imageUrl === null) {
+    throw new Error("The generated preview could not be loaded.");
+  }
+
+  return {
+    prompt,
+    mediaType: image.mediaType,
+    storageId,
+    imageUrl,
+  };
+}
+
+export async function submitGeneratedPreview(args: {
+  lobbyId: Id<"lobbies">;
+  prompt: string;
+  storageId: Id<"_storage">;
+  mediaType: string;
+}) {
+  const client = await createAuthenticatedClient();
+  const prompt = sanitizePromptOrThrow(args.prompt);
+
+  if (!args.mediaType.startsWith("image/")) {
+    throw new Error("The generated preview is not a valid image.");
+  }
 
   return await client.mutation(api.imageGame.submitGeneratedImage, {
     lobbyId: args.lobbyId,
-    prompt: args.prompt,
-    imageStorageId: uploadJson.storageId as unknown as Id<"_storage">,
-    imageMediaType: image.mediaType,
+    prompt,
+    imageStorageId: args.storageId,
+    imageMediaType: args.mediaType,
   });
 }
