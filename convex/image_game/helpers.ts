@@ -1,5 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { PRESENT_DURATION_MS } from "../game/constants";
+import { shuffleArray } from "../game/random";
 import { requireViewer } from "../lib/auth";
 import {
   DEFAULT_TEXT_GAME_ROUND_COUNT,
@@ -12,8 +14,6 @@ import {
   getLobbyOrThrow,
   sortPlayers,
 } from "../lobbies/helpers";
-import { PRESENT_DURATION_MS } from "../game/constants";
-import { shuffleArray } from "../game/random";
 
 type DbContext = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">;
 
@@ -319,4 +319,3 @@ export async function selectPromptIds(
     .slice(0, roundCount)
     .map((prompt) => prompt._id);
 }
-

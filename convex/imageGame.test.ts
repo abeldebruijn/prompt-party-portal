@@ -257,9 +257,12 @@ describe("convex/imageGame", () => {
     });
     await host.client.mutation(api.imageGame.startGame, { lobbyId });
 
-    const uploadUrl = await member.client.mutation(api.imageGame.generateUploadUrl, {
-      lobbyId,
-    });
+    const uploadUrl = await member.client.mutation(
+      api.imageGame.generateUploadUrl,
+      {
+        lobbyId,
+      },
+    );
 
     expect(uploadUrl).toContain("/api/storage/upload");
 
@@ -293,10 +296,13 @@ describe("convex/imageGame", () => {
     await host.client.mutation(api.imageGame.startGame, { lobbyId });
 
     const storageId = await storeTestImage(t);
-    const previewUrl = await member.client.query(api.imageGame.getPreviewImageUrl, {
-      lobbyId,
-      storageId,
-    });
+    const previewUrl = await member.client.query(
+      api.imageGame.getPreviewImageUrl,
+      {
+        lobbyId,
+        storageId,
+      },
+    );
 
     expect(previewUrl).toBeTruthy();
   });
@@ -324,7 +330,9 @@ describe("convex/imageGame", () => {
 
     await expireCurrentPresentRound(t, lobbyId);
 
-    await member.client.mutation(api.imageGame.advanceAfterPresent, { lobbyId });
+    await member.client.mutation(api.imageGame.advanceAfterPresent, {
+      lobbyId,
+    });
     const secondAdvance = await member.client.mutation(
       api.imageGame.advanceAfterPresent,
       { lobbyId },
@@ -332,9 +340,12 @@ describe("convex/imageGame", () => {
 
     expect(secondAdvance.state).toBe("Completion");
 
-    const completionState = await host.client.query(api.imageGame.getGameState, {
-      lobbyId,
-    });
+    const completionState = await host.client.query(
+      api.imageGame.getGameState,
+      {
+        lobbyId,
+      },
+    );
 
     expect(completionState.lobby.state).toBe("Completion");
     expect(completionState.leaderboard).toHaveLength(2);
@@ -367,9 +378,12 @@ describe("convex/imageGame", () => {
       prompt: "First prompt",
     });
 
-    const firstJudgeState = await host.client.query(api.imageGame.getGameState, {
-      lobbyId,
-    });
+    const firstJudgeState = await host.client.query(
+      api.imageGame.getGameState,
+      {
+        lobbyId,
+      },
+    );
     const judgeSubmissionId =
       firstJudgeState.round?.judgeSubmissions[0]?.submissionId;
     if (!judgeSubmissionId) {
@@ -408,9 +422,12 @@ describe("convex/imageGame", () => {
       prompt: "Bob prompt",
     });
 
-    const secondJudgeState = await alice.client.query(api.imageGame.getGameState, {
-      lobbyId,
-    });
+    const secondJudgeState = await alice.client.query(
+      api.imageGame.getGameState,
+      {
+        lobbyId,
+      },
+    );
     const [firstSubmission, secondSubmission] =
       secondJudgeState.round?.judgeSubmissions ?? [];
 
@@ -422,7 +439,8 @@ describe("convex/imageGame", () => {
     });
     await alice.client.mutation(api.imageGame.rateSubmission, {
       lobbyId,
-      submissionId: secondSubmission?.submissionId as Id<"imageGameSubmissions">,
+      submissionId:
+        secondSubmission?.submissionId as Id<"imageGameSubmissions">,
       correctnessStars: 1,
       creativityStars: 1,
     });

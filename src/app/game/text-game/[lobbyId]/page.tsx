@@ -2,10 +2,9 @@
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-  ChevronLeft,
   Loader2Icon,
-  RefreshCcw,
   StarIcon,
   StarOff,
   TrophyIcon,
@@ -14,8 +13,8 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
+import { PresentStageShell } from "@/components/game/present-stage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
@@ -720,36 +719,55 @@ function PresentStage({
   }, [now, snapshot.round.presentEndsAt]);
 
   return (
-    <div className="mt-10 border-t border-foreground/10 pt-10">
-      <div className="rounded-3xl border border-primary/20 bg-primary/10 p-5">
-        <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-          Advancing in {countdownSeconds}s
-        </p>
-        {snapshot.round.winners.length > 0 ? (
-          <div className="mt-4 space-y-4">
-            {snapshot.round.winners.map((winner) => (
-              <div
-                key={winner.submissionId}
-                className="rounded-3xl border border-primary/20 bg-background/75 p-5"
-              >
-                <p className="text-base leading-7 text-foreground">
-                  {winner.answer}
-                </p>
-                <p className="mt-3 text-sm leading-6 text-foreground/70">
-                  {winner.authorDisplayName} · {winner.correctnessStars}
-                  /5 correctness · {winner.creativityStars}/5 creativity
+    <PresentStageShell
+      countdownSeconds={countdownSeconds}
+      description="The room can take in the best line, see who wrote it, and catch the score split before the next prompt drops."
+      eyebrow="Results spotlight"
+      title="The round lands here."
+    >
+      {snapshot.round.winners.length > 0 ? (
+        <div className="grid gap-3">
+          {snapshot.round.winners.map((winner, index) => (
+            <motion.article
+              key={winner.submissionId}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              className="rounded-[1.35rem] border border-foreground/10 bg-background/82 p-4 shadow-[0_20px_60px_-42px_color-mix(in_oklch,var(--color-primary)_45%,transparent)] sm:p-5"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              transition={{
+                duration: 0.45,
+                delay: 0.08 + index * 0.08,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="rounded-full border border-primary/18 bg-primary/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-foreground/70">
+                  Winning answer
+                </span>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/45">
+                  {winner.authorDisplayName}
                 </p>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 text-sm leading-6 text-foreground/75">
-            No answers were scored this round.
-          </p>
-        )}
-      </div>
+              <p className="mt-4 max-w-3xl text-xl leading-tight text-foreground sm:text-[1.7rem] sm:leading-[1.08]">
+                {winner.answer}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-foreground/70 sm:text-sm">
+                <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
+                  {winner.correctnessStars}/5 correctness
+                </span>
+                <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
+                  {winner.creativityStars}/5 creativity
+                </span>
+              </div>
+            </motion.article>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-[1.35rem] border border-dashed border-foreground/15 bg-background/72 px-4 py-6 text-sm leading-6 text-foreground/72 sm:px-5">
+          No answers were scored this round.
+        </div>
+      )}
 
-      {countdownSeconds === 0 ? (
+      {countdownSeconds === 0 && snapshot.lobby.state !== "Completion" ? (
         <Button
           className="mt-6 rounded-full px-6"
           disabled={pendingAction === "continue"}
@@ -769,7 +787,8 @@ function PresentStage({
           )}
         </Button>
       ) : null}
-    </div>
+
+    </PresentStageShell>
   );
 }
 
@@ -836,44 +855,6 @@ export default function TextGamePage() {
     snapshot.viewer.role === "Participant" &&
     !snapshot.round.viewerSubmission;
   const isJudge = snapshot.viewer.role === "Judge";
-
-  // If round is the last round show component for final results
-  if (
-    snapshot.round.roundNumber >= snapshot.session.roundCount &&
-    snapshot.round.stage === "Present"
-  ) {
-    return (
-      <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
-        <SurfaceCard>
-          <SurfaceCardTitle className="text-2xl">
-            <TrophyIcon className="size-5 text-primary" />
-            Leaderboard
-          </SurfaceCardTitle>
-          <div className="mt-6">
-            <Leaderboard leaderboard={snapshot.leaderboard} />
-          </div>
-        </SurfaceCard>
-
-        {/* If user is host show reset lobby button */}
-        {snapshot.viewer.isHost ? (
-          <Button
-            className="mt-6 rounded-full px-6"
-            onClick={() => resetLobby({ lobbyId })}
-          >
-            <RefreshCcw className="size-4" />
-            Reset lobby
-          </Button>
-        ) : (
-          <Link href="/">
-            <Button className="mt-6 rounded-full px-6">
-              <ChevronLeft className="size-4" />
-              Back to home
-            </Button>
-          </Link>
-        )}
-      </main>
-    );
-  }
 
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">

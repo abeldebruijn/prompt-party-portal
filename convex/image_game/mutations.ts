@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { mutation } from "../_generated/server";
+import { validateStarCount } from "../game/scoring";
 import {
   DEFAULT_TEXT_GAME_ROUND_COUNT,
   IMAGE_GAME_NAME,
@@ -24,7 +25,6 @@ import {
   sanitizePromptInput,
   selectPromptIds,
 } from "./helpers";
-import { validateStarCount } from "../game/scoring";
 
 async function transitionGenerateToJudgeOrPresent(
   ctx: MutationCtx,

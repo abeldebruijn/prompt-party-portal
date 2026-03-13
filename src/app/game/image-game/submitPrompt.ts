@@ -1,11 +1,10 @@
 "use server";
 
 import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server";
+import { gateway, generateImage } from "ai";
 import { ConvexHttpClient } from "convex/browser";
-import { generateImage, gateway } from "ai";
-
-import { sanitizeImageGamePrompt } from "../../../../convex/lib/lobby";
 import { api, type Id } from "@/lib/convex-server";
+import { sanitizeImageGamePrompt } from "../../../../convex/lib/lobby";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL as string;
 

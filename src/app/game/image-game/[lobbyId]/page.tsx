@@ -4,9 +4,7 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ChevronLeft,
   Loader2Icon,
-  RefreshCcw,
   StarIcon,
   StarOff,
   TrophyIcon,
@@ -21,6 +19,7 @@ import {
   submitGeneratedPreview,
 } from "@/app/game/image-game/submitPrompt";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
+import { PresentStageShell } from "@/components/game/present-stage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
@@ -345,6 +344,7 @@ function GenerateStage({
     }
   }, [snapshot.round.viewerSubmission?.prompt]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>This effect is intentionally not exhaustive; it only depends on roundKey.</explanation>
   useEffect(() => {
     setPreview(null);
   }, [roundKey]);
@@ -462,8 +462,10 @@ function GenerateStage({
               <p className="text-sm font-medium text-foreground/80">
                 Preview image
               </p>
+
+              {/** biome-ignore lint/performance/noImgElement: <explanation>This is a static image URL, not user-generated content.</explanation> */}
               <img
-                alt="Generated image preview"
+                alt="Generated preview"
                 className="mt-3 aspect-square w-full rounded-2xl border border-foreground/10 object-cover"
                 src={previewImageUrl ?? ""}
               />
@@ -860,51 +862,82 @@ function PresentStage({
   }, [now, snapshot.round.presentEndsAt]);
 
   return (
-    <div className="mt-10 border-t border-foreground/10 pt-10">
-      <div className="rounded-3xl border border-primary/20 bg-primary/10 p-5">
-        <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-          Advancing in {countdownSeconds}s
-        </p>
-        {snapshot.round.winners.length > 0 ? (
-          <div className="mt-4 space-y-4">
-            {snapshot.round.winners.map((winner) => (
-              <div
-                key={winner.submissionId}
-                className="rounded-3xl border border-primary/20 bg-background/75 p-5"
-              >
-                {winner.imageUrl ? (
-                  <img
-                    alt="Winning submission"
-                    className="w-full rounded-2xl border border-foreground/10 object-cover"
-                    src={winner.imageUrl}
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 text-foreground/60">
-                    <Loader2Icon className="size-4 animate-spin" />
-                    <span className="text-sm">Image unavailable</span>
-                  </div>
-                )}
-                <p className="mt-4 text-sm leading-6 text-foreground/70">
-                  <span className="font-medium text-foreground/80">
-                    Prompt:
-                  </span>{" "}
-                  {winner.prompt}
-                </p>
-                <p className="mt-3 text-sm leading-6 text-foreground/70">
-                  {winner.authorDisplayName} · {winner.correctnessStars}
-                  /5 correctness · {winner.creativityStars}/5 creativity
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 text-sm leading-6 text-foreground/75">
-            No images were scored this round.
-          </p>
-        )}
-      </div>
+    <PresentStageShell
+      countdownSeconds={countdownSeconds}
+      description="Give the lobby a beat to study the top image, revisit the prompt, and catch the score split before the next generation round starts."
+      eyebrow="Winning gallery"
+      title="The image reveal gets the room's full attention."
+    >
+      {snapshot.round.winners.length > 0 ? (
+        <div className="grid gap-4">
+          {snapshot.round.winners.map((winner, index) => (
+            <motion.article
+              key={winner.submissionId}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              className="grid gap-4 rounded-[1.45rem] border border-foreground/10 bg-background/82 p-4 shadow-[0_24px_80px_-48px_color-mix(in_oklch,var(--color-primary)_42%,transparent)] sm:p-5 lg:grid-cols-[minmax(0,0.92fr)_minmax(15rem,0.88fr)] lg:items-start"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              transition={{
+                duration: 0.48,
+                delay: 0.08 + index * 0.08,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+            >
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="rounded-full border border-primary/18 bg-primary/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-foreground/70">
+                    Winning image
+                  </span>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-foreground/45">
+                    {winner.authorDisplayName}
+                  </p>
+                </div>
 
-      {countdownSeconds === 0 ? (
+                <div className="overflow-hidden rounded-[1.15rem] border border-foreground/10 bg-background/60">
+                  {winner.imageUrl ? (
+                    // biome-ignore lint/performance/noImgElement: <explanation>This is a static image URL, not user-generated content.</explanation>
+                    <img
+                      alt="Winning submission"
+                      className="aspect-square w-full object-cover"
+                      src={winner.imageUrl}
+                    />
+                  ) : (
+                    <div className="flex min-h-56 items-center justify-center gap-2 text-foreground/60">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      <span className="text-sm">Image unavailable</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex h-full flex-col justify-between gap-4">
+                <div>
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-foreground/48">
+                    Prompt
+                  </p>
+                  <p className="mt-2.5 text-lg leading-tight text-foreground sm:text-xl">
+                    {winner.prompt}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs text-foreground/70 sm:text-sm">
+                  <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
+                    {winner.correctnessStars}/5 correctness
+                  </span>
+                  <span className="rounded-full border border-foreground/10 bg-background/65 px-3 py-1">
+                    {winner.creativityStars}/5 creativity
+                  </span>
+                </div>
+              </div>
+            </motion.article>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-[1.35rem] border border-dashed border-foreground/15 bg-background/72 px-4 py-6 text-sm leading-6 text-foreground/72 sm:px-5">
+          No images were scored this round.
+        </div>
+      )}
+
+      {countdownSeconds === 0 && snapshot.lobby.state !== "Completion" ? (
         <Button
           className="mt-6 rounded-full px-6"
           disabled={pendingAction === "continue"}
@@ -924,7 +957,8 @@ function PresentStage({
           )}
         </Button>
       ) : null}
-    </div>
+
+    </PresentStageShell>
   );
 }
 
@@ -991,44 +1025,6 @@ export default function ImageGamePage() {
     snapshot.viewer.role === "Participant" &&
     !snapshot.round.viewerSubmission;
   const isJudge = snapshot.viewer.role === "Judge";
-
-  // If round is the last round show component for final results
-  if (
-    snapshot.round.roundNumber >= snapshot.session.roundCount &&
-    snapshot.round.stage === "Present"
-  ) {
-    return (
-      <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
-        <SurfaceCard>
-          <SurfaceCardTitle className="text-2xl">
-            <TrophyIcon className="size-5 text-primary" />
-            Leaderboard
-          </SurfaceCardTitle>
-          <div className="mt-6">
-            <Leaderboard leaderboard={snapshot.leaderboard} />
-          </div>
-        </SurfaceCard>
-
-        {/* If user is host show reset lobby button */}
-        {snapshot.viewer.isHost ? (
-          <Button
-            className="mt-6 rounded-full px-6"
-            onClick={() => resetLobby({ lobbyId })}
-          >
-            <RefreshCcw className="size-4" />
-            Reset lobby
-          </Button>
-        ) : (
-          <Link href="/">
-            <Button className="mt-6 rounded-full px-6">
-              <ChevronLeft className="size-4" />
-              Back to home
-            </Button>
-          </Link>
-        )}
-      </main>
-    );
-  }
 
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">

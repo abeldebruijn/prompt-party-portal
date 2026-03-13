@@ -89,7 +89,10 @@ export const getGameState = query({
               .map(async (submission) => ({
                 submissionId: submission._id,
                 prompt: submission.prompt,
-                imageUrl: await getSubmissionUrl(ctx, submission.imageStorageId),
+                imageUrl: await getSubmissionUrl(
+                  ctx,
+                  submission.imageStorageId,
+                ),
                 correctnessStars: submission.correctnessStars ?? null,
                 creativityStars: submission.creativityStars ?? null,
               })),

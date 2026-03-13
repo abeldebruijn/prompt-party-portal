@@ -3,14 +3,14 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { mutation } from "../_generated/server";
+import { shuffleArray } from "../game/random";
+import { validateStarCount } from "../game/scoring";
 import {
   DEFAULT_TEXT_GAME_ROUND_COUNT,
   sanitizeSummary,
   TEXT_GAME_NAME,
 } from "../lib/lobby";
 import { requireLobbyMembershipForViewer } from "../lobbies/helpers";
-import { shuffleArray } from "../game/random";
-import { validateStarCount } from "../game/scoring";
 import {
   buildWinningSubmissions,
   clampRoundCount,
@@ -396,7 +396,6 @@ export const advanceToPresent = mutation({
     );
 
     if (!allRated) {
-      
     }
 
     const now = Date.now();

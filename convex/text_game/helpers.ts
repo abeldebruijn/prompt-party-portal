@@ -12,7 +12,6 @@ import {
   getLobbyOrThrow,
   sortPlayers,
 } from "../lobbies/helpers";
-import { shuffleArray } from "../game/random";
 import { PRESENT_DURATION_MS } from "./constants";
 
 type DbContext = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">;
