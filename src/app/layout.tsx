@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Baloo_2, JetBrains_Mono, Manrope } from "next/font/google";
 
 import { SiteHeader } from "@/components/site-header";
+import { Toaster } from "@/components/ui/sonner";
 
 import { ConvexClientProvider } from "./ConvexClientProvider";
 import "./globals.css";
@@ -45,6 +46,8 @@ export default function RootLayout({
           <ConvexClientProvider>
             <SiteHeader />
             {children}
+
+            <Toaster position="top-center" richColors />
           </ConvexClientProvider>
         </ConvexAuthNextjsServerProvider>
       </body>

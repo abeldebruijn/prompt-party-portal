@@ -1,0 +1,1 @@
+export const PRESENT_DURATION_MS = 15_000;

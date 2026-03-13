@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import type { Id } from "../_generated/dataModel";
 import { query } from "../_generated/server";
 import {
   buildWinningSubmissions,
@@ -9,15 +10,22 @@ import {
   listAllActivePlayers,
   listLatestRoundPokes,
   listRoundSubmissions,
-  requireTextGameMembership,
+  requireImageGameMembership,
 } from "./helpers";
+
+async function getSubmissionUrl(
+  ctx: { storage: { getUrl: (id: Id<"_storage">) => Promise<string | null> } },
+  storageId: Id<"_storage">,
+) {
+  return await ctx.storage.getUrl(storageId);
+}
 
 export const getGameState = query({
   args: {
     lobbyId: v.id("lobbies"),
   },
   handler: async (ctx, args) => {
-    const membership = await requireTextGameMembership(ctx, args.lobbyId);
+    const membership = await requireImageGameMembership(ctx, args.lobbyId);
     const [session, activePlayers] = await Promise.all([
       getActiveSession(ctx, args.lobbyId),
       listAllActivePlayers(ctx, args.lobbyId),
@@ -47,7 +55,7 @@ export const getGameState = query({
     );
 
     if (round === null) {
-      throw new Error("The current text-game round could not be found.");
+      throw new Error("The current image-game round could not be found.");
     }
 
     const submissions = await listRoundSubmissions(ctx, round._id);
@@ -56,6 +64,9 @@ export const getGameState = query({
       round.stage === "Present" || session.status === "Completed"
         ? await buildWinningSubmissions(ctx, round)
         : [];
+    const winnerUrls = await Promise.all(
+      winners.map((winner) => getSubmissionUrl(ctx, winner.imageStorageId)),
+    );
     const eligibleSet = new Set(round.eligiblePlayerIds);
     const targetPlayer = activePlayers.find(
       (player) => player._id === round.targetPlayerId,
@@ -76,16 +87,26 @@ export const getGameState = query({
       submissions.find(
         (submission) => submission.authorPlayerId === membership.player._id,
       ) ?? null;
+    const viewerSubmissionUrl =
+      viewerSubmission !== null
+        ? await getSubmissionUrl(ctx, viewerSubmission.imageStorageId)
+        : null;
     const judgeSubmissions =
       round.stage === "Judge" && membership.player._id === round.targetPlayerId
-        ? submissions
-            .sort((left, right) => left.submittedAt - right.submittedAt)
-            .map((submission) => ({
-              submissionId: submission._id,
-              answer: submission.answer,
-              correctnessStars: submission.correctnessStars ?? null,
-              creativityStars: submission.creativityStars ?? null,
-            }))
+        ? await Promise.all(
+            submissions
+              .sort((left, right) => left.submittedAt - right.submittedAt)
+              .map(async (submission) => ({
+                submissionId: submission._id,
+                prompt: submission.prompt,
+                imageUrl: await getSubmissionUrl(
+                  ctx,
+                  submission.imageStorageId,
+                ),
+                correctnessStars: submission.correctnessStars ?? null,
+                creativityStars: submission.creativityStars ?? null,
+              })),
+          )
         : [];
     const progress = activePlayers.map((player) => {
       if (player.kind === "ai") {
@@ -169,12 +190,21 @@ export const getGameState = query({
         viewerSubmission: viewerSubmission
           ? {
               submissionId: viewerSubmission._id,
-              answer: viewerSubmission.answer,
+              prompt: viewerSubmission.prompt,
+              imageUrl: viewerSubmissionUrl,
               totalScore: viewerSubmission.totalScore ?? null,
             }
           : null,
         judgeSubmissions,
-        winners,
+        winners: winners.map((winner, index) => ({
+          submissionId: winner.submissionId,
+          prompt: winner.prompt,
+          imageUrl: winnerUrls[index] ?? null,
+          totalScore: winner.totalScore,
+          correctnessStars: winner.correctnessStars,
+          creativityStars: winner.creativityStars,
+          authorDisplayName: winner.authorDisplayName,
+        })),
         progress,
       },
       completion:
@@ -185,5 +215,16 @@ export const getGameState = query({
           : null,
       leaderboard,
     };
+  },
+});
+
+export const getPreviewImageUrl = query({
+  args: {
+    lobbyId: v.id("lobbies"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    await requireImageGameMembership(ctx, args.lobbyId);
+    return await getSubmissionUrl(ctx, args.storageId);
   },
 });

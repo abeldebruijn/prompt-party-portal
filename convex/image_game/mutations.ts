@@ -3,12 +3,11 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { mutation } from "../_generated/server";
-import { shuffleArray } from "../game/random";
 import { validateStarCount } from "../game/scoring";
 import {
   DEFAULT_TEXT_GAME_ROUND_COUNT,
+  IMAGE_GAME_NAME,
   sanitizeSummary,
-  TEXT_GAME_NAME,
 } from "../lib/lobby";
 import { requireLobbyMembershipForViewer } from "../lobbies/helpers";
 import {
@@ -21,9 +20,10 @@ import {
   listActiveHumanPlayers,
   listRoundSubmissions,
   moveRoundToPresent,
-  requireTextGameHost,
-  requireTextGameMembership,
-  sanitizeAnswerInput,
+  requireImageGameHost,
+  requireImageGameMembership,
+  sanitizePromptInput,
+  selectPromptIds,
 } from "./helpers";
 
 async function transitionGenerateToJudgeOrPresent(
@@ -78,10 +78,12 @@ export const updateSettings = mutation({
     roundCount: v.number(),
   },
   handler: async (ctx, args) => {
-    const { lobby } = await requireTextGameHost(ctx, args.lobbyId);
+    const { lobby } = await requireImageGameHost(ctx, args.lobbyId);
 
     if (lobby.state !== "Creation") {
-      throw new Error("Text-game settings can only change during lobby setup.");
+      throw new Error(
+        "Image-game settings can only change during lobby setup.",
+      );
     }
 
     const roundCount = clampRoundCount(args.roundCount);
@@ -107,27 +109,17 @@ export const startGame = mutation({
     lobbyId: v.id("lobbies"),
   },
   handler: async (ctx, args) => {
-    const { lobby } = await requireTextGameHost(ctx, args.lobbyId);
+    const { lobby } = await requireImageGameHost(ctx, args.lobbyId);
 
     if (lobby.state !== "Creation") {
-      throw new Error("Only lobbies in setup mode can start the text game.");
+      throw new Error("Only lobbies in setup mode can start the image game.");
     }
 
-    if (lobby.selectedGame !== TEXT_GAME_NAME) {
-      throw new Error("This lobby is not using the text game.");
-    }
-
-    const [activePlayers, prompts] = await Promise.all([
-      listActiveHumanPlayers(ctx, lobby._id),
-      ctx.db
-        .query("textGamePrompts")
-        .withIndex("isActive", (query) => query.eq("isActive", true))
-        .collect(),
-    ]);
+    const activePlayers = await listActiveHumanPlayers(ctx, lobby._id);
 
     if (activePlayers.length < 2) {
       throw new Error(
-        "At least two active human players are required for the text game.",
+        "At least two active human players are required for the image game.",
       );
     }
 
@@ -135,18 +127,9 @@ export const startGame = mutation({
       lobby.textGameRoundCount ?? DEFAULT_TEXT_GAME_ROUND_COUNT,
     );
 
-    if (prompts.length < roundCount) {
-      throw new Error("Not enough active text-game prompts are stored yet.");
-    }
-
     const now = Date.now();
-    const selectedPromptIds = shuffleArray(
-      prompts.sort((left, right) => left.order - right.order),
-      `${lobby._id}:${now}:text-game-prompts`,
-    )
-      .slice(0, roundCount)
-      .map((prompt) => prompt._id);
-    const sessionId = await ctx.db.insert("textGameSessions", {
+    const selectedPromptIds = await selectPromptIds(ctx, lobby._id, roundCount);
+    const sessionId = await ctx.db.insert("imageGameSessions", {
       lobbyId: lobby._id,
       roundCount,
       promptIds: selectedPromptIds,
@@ -157,7 +140,7 @@ export const startGame = mutation({
     const session = await ctx.db.get(sessionId);
 
     if (session === null) {
-      throw new Error("The text game could not be started.");
+      throw new Error("The image game could not be started.");
     }
 
     await createRound(ctx, session, lobby._id, 1, now);
@@ -179,64 +162,22 @@ export const startGame = mutation({
   },
 });
 
-export const submitAnswer = mutation({
+export const advanceToJudge = mutation({
   args: {
     lobbyId: v.id("lobbies"),
-    answer: v.string(),
   },
   handler: async (ctx, args) => {
-    const membership = await requireTextGameMembership(ctx, args.lobbyId);
-    const session = await getActiveSession(ctx, args.lobbyId);
+    await requireImageGameHost(ctx, args.lobbyId);
 
-    if (session === null || session.status !== "InProgress") {
-      throw new Error("The text game is not currently running.");
-    }
-
-    const round = await getCurrentRound(
+    const result = await transitionGenerateToJudgeOrPresent(
       ctx,
-      session._id,
-      session.currentRoundNumber,
+      args.lobbyId,
+      true,
     );
-
-    if (round === null || round.stage !== "Generate") {
-      throw new Error("Answers can only be submitted during Generate.");
-    }
-
-    if (!round.eligiblePlayerIds.includes(membership.player._id)) {
-      throw new Error("You are spectating this round and cannot submit.");
-    }
-
-    if (membership.player._id === round.targetPlayerId) {
-      throw new Error(
-        "The selected player judges this round and cannot submit.",
-      );
-    }
-
-    const existingSubmission = await ctx.db
-      .query("textGameSubmissions")
-      .withIndex("roundIdAndAuthorPlayerId", (query) =>
-        query
-          .eq("roundId", round._id)
-          .eq("authorPlayerId", membership.player._id),
-      )
-      .unique();
-
-    if (existingSubmission !== null) {
-      throw new Error("You have already submitted an answer for this round.");
-    }
-
-    await ctx.db.insert("textGameSubmissions", {
-      roundId: round._id,
-      authorPlayerId: membership.player._id,
-      answer: sanitizeAnswerInput(args.answer),
-      submittedAt: Date.now(),
-    });
-
-    await transitionGenerateToJudgeOrPresent(ctx, args.lobbyId);
 
     return {
       lobbyId: args.lobbyId,
-      roundId: round._id,
+      transition: result.state,
     };
   },
 });
@@ -247,11 +188,11 @@ export const pokePlayer = mutation({
     playerId: v.id("lobbyPlayers"),
   },
   handler: async (ctx, args) => {
-    const membership = await requireTextGameMembership(ctx, args.lobbyId);
+    const membership = await requireImageGameMembership(ctx, args.lobbyId);
     const session = await getActiveSession(ctx, args.lobbyId);
 
     if (session === null || session.status !== "InProgress") {
-      throw new Error("The text game is not currently running.");
+      throw new Error("The image game is not currently running.");
     }
 
     const round = await getCurrentRound(
@@ -287,7 +228,7 @@ export const pokePlayer = mutation({
     }
 
     const existingSubmission = await ctx.db
-      .query("textGameSubmissions")
+      .query("imageGameSubmissions")
       .withIndex("roundIdAndAuthorPlayerId", (query) =>
         query.eq("roundId", round._id).eq("authorPlayerId", targetPlayer._id),
       )
@@ -302,7 +243,7 @@ export const pokePlayer = mutation({
       lobbyId: args.lobbyId,
       targetPlayerId: targetPlayer._id,
       pokedByPlayerId: membership.player._id,
-      textRoundId: round._id,
+      imageRoundId: round._id,
       createdAt: now,
     });
 
@@ -316,39 +257,19 @@ export const pokePlayer = mutation({
   },
 });
 
-export const advanceToJudge = mutation({
-  args: {
-    lobbyId: v.id("lobbies"),
-  },
-  handler: async (ctx, args) => {
-    await requireTextGameHost(ctx, args.lobbyId);
-
-    const result = await transitionGenerateToJudgeOrPresent(
-      ctx,
-      args.lobbyId,
-      true,
-    );
-
-    return {
-      lobbyId: args.lobbyId,
-      transition: result.state,
-    };
-  },
-});
-
 export const rateSubmission = mutation({
   args: {
     lobbyId: v.id("lobbies"),
-    submissionId: v.id("textGameSubmissions"),
+    submissionId: v.id("imageGameSubmissions"),
     correctnessStars: v.optional(v.number()),
     creativityStars: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const membership = await requireTextGameMembership(ctx, args.lobbyId);
+    const membership = await requireImageGameMembership(ctx, args.lobbyId);
     const session = await getActiveSession(ctx, args.lobbyId);
 
     if (session === null || session.status !== "InProgress") {
-      throw new Error("The text game is not currently running.");
+      throw new Error("The image game is not currently running.");
     }
 
     const round = await getCurrentRound(
@@ -434,11 +355,11 @@ export const advanceToPresent = mutation({
     lobbyId: v.id("lobbies"),
   },
   handler: async (ctx, args) => {
-    const membership = await requireTextGameMembership(ctx, args.lobbyId);
+    const membership = await requireImageGameMembership(ctx, args.lobbyId);
     const session = await getActiveSession(ctx, args.lobbyId);
 
     if (session === null || session.status !== "InProgress") {
-      throw new Error("The text game is not currently running.");
+      throw new Error("The image game is not currently running.");
     }
 
     const round = await getCurrentRound(
@@ -448,7 +369,7 @@ export const advanceToPresent = mutation({
     );
 
     if (round === null) {
-      throw new Error("The current text-game round could not be found.");
+      throw new Error("The current image-game round could not be found.");
     }
 
     if (round.stage === "Present") {
@@ -471,6 +392,7 @@ export const advanceToPresent = mutation({
     );
 
     if (!allRated) {
+      throw new Error("Please rate all submissions before continuing.");
     }
 
     const now = Date.now();
@@ -488,8 +410,8 @@ export const advanceAfterPresent = mutation({
     const membership = await requireLobbyMembershipForViewer(ctx, args.lobbyId);
     const session = await getActiveSession(ctx, args.lobbyId);
 
-    if (membership.lobby.selectedGame !== TEXT_GAME_NAME) {
-      throw new Error("This lobby is not using the text game.");
+    if (membership.lobby.selectedGame !== IMAGE_GAME_NAME) {
+      throw new Error("This lobby is not using the image game.");
     }
 
     if (session === null) {
@@ -545,9 +467,9 @@ export const advanceAfterPresent = mutation({
       completedAt: now,
       summary:
         winningSubmissions.length > 0
-          ? sanitizeSummary("Text game complete. Final leaderboard is ready.")
+          ? sanitizeSummary("Image game complete. Final leaderboard is ready.")
           : sanitizeSummary(
-              "Text game complete. No winning submissions were scored.",
+              "Image game complete. No winning submissions were scored.",
             ),
       leaderboard: leaderboard.map((entry) => ({
         playerId: entry.playerId,
@@ -570,6 +492,122 @@ export const advanceAfterPresent = mutation({
     return {
       lobbyId: args.lobbyId,
       state: "Completion" as const,
+    };
+  },
+});
+
+export const generateUploadUrl = mutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await requireImageGameMembership(ctx, args.lobbyId);
+    const session = await getActiveSession(ctx, args.lobbyId);
+
+    if (session === null || session.status !== "InProgress") {
+      throw new Error("The image game is not currently running.");
+    }
+
+    const round = await getCurrentRound(
+      ctx,
+      session._id,
+      session.currentRoundNumber,
+    );
+
+    if (round === null || round.stage !== "Generate") {
+      throw new Error("Prompts can only be submitted during Generate.");
+    }
+
+    if (!round.eligiblePlayerIds.includes(membership.player._id)) {
+      throw new Error("You are spectating this round and cannot submit.");
+    }
+
+    if (membership.player._id === round.targetPlayerId) {
+      throw new Error(
+        "The selected player judges this round and cannot submit.",
+      );
+    }
+
+    const existingSubmission = await ctx.db
+      .query("imageGameSubmissions")
+      .withIndex("roundIdAndAuthorPlayerId", (query) =>
+        query
+          .eq("roundId", round._id)
+          .eq("authorPlayerId", membership.player._id),
+      )
+      .unique();
+
+    if (existingSubmission !== null) {
+      throw new Error("You have already submitted a prompt for this round.");
+    }
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const submitGeneratedImage = mutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+    prompt: v.string(),
+    imageStorageId: v.id("_storage"),
+    imageMediaType: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const membership = await requireImageGameMembership(ctx, args.lobbyId);
+    const session = await getActiveSession(ctx, args.lobbyId);
+
+    if (session === null || session.status !== "InProgress") {
+      throw new Error("The image game is not currently running.");
+    }
+
+    const round = await getCurrentRound(
+      ctx,
+      session._id,
+      session.currentRoundNumber,
+    );
+
+    if (round === null || round.stage !== "Generate") {
+      throw new Error("Prompts can only be submitted during Generate.");
+    }
+
+    if (!round.eligiblePlayerIds.includes(membership.player._id)) {
+      throw new Error("You are spectating this round and cannot submit.");
+    }
+
+    if (membership.player._id === round.targetPlayerId) {
+      throw new Error(
+        "The selected player judges this round and cannot submit.",
+      );
+    }
+
+    const existingSubmission = await ctx.db
+      .query("imageGameSubmissions")
+      .withIndex("roundIdAndAuthorPlayerId", (query) =>
+        query
+          .eq("roundId", round._id)
+          .eq("authorPlayerId", membership.player._id),
+      )
+      .unique();
+
+    if (existingSubmission !== null) {
+      throw new Error("You have already submitted a prompt for this round.");
+    }
+
+    const submissionId = await ctx.db.insert("imageGameSubmissions", {
+      roundId: round._id,
+      authorPlayerId: membership.player._id,
+      prompt: sanitizePromptInput(args.prompt),
+      imageStorageId: args.imageStorageId,
+      imageMediaType: args.imageMediaType,
+      submittedAt: Date.now(),
+    });
+
+    await transitionGenerateToJudgeOrPresent(ctx, args.lobbyId);
+
+    return {
+      lobbyId: args.lobbyId,
+      roundId: round._id,
+      submissionId,
     };
   },
 });
