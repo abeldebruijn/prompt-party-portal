@@ -31,6 +31,7 @@ const PROMPTS = [
 ] as const;
 
 type TestBackend = ReturnType<typeof createConvexTest>;
+type TestClient = ReturnType<TestBackend["withIdentity"]>;
 
 let nextUserSeed = 0;
 
@@ -76,6 +77,32 @@ async function seedPrompts(t: TestBackend, count: number = PROMPTS.length) {
         isActive: true,
       });
     }
+  });
+}
+
+const TEST_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO9Ww2kAAAAASUVORK5CYII=";
+
+async function storeTestImage(t: TestBackend): Promise<Id<"_storage">> {
+  return await t.run(async (ctx) => {
+    const blob = new Blob([Buffer.from(TEST_PNG_BASE64, "base64")], {
+      type: "image/png",
+    });
+    return (await ctx.storage.store(blob)) as Id<"_storage">;
+  });
+}
+
+async function submitPromptAsGeneratedImage(
+  t: TestBackend,
+  client: TestClient,
+  args: { lobbyId: Id<"lobbies">; prompt: string },
+) {
+  const storageId = await storeTestImage(t);
+  return await client.mutation(api.imageGame.submitGeneratedImage, {
+    lobbyId: args.lobbyId,
+    prompt: args.prompt,
+    imageStorageId: storageId,
+    imageMediaType: "image/png",
   });
 }
 
@@ -186,7 +213,7 @@ describe("convex/imageGame", () => {
     });
 
     await expect(
-      seededLobby.host.client.action(api.imageGame.submitPrompt, {
+      submitPromptAsGeneratedImage(t2, seededLobby.host.client, {
         lobbyId: seededLobby.lobbyId,
         prompt: "Host should not submit",
       }),
@@ -194,13 +221,13 @@ describe("convex/imageGame", () => {
       "The selected player judges this round and cannot submit.",
     );
 
-    await seededMember.client.action(api.imageGame.submitPrompt, {
+    await submitPromptAsGeneratedImage(t2, seededMember.client, {
       lobbyId: seededLobby.lobbyId,
       prompt: "Competitive karaoke, neon lights, crowd cheering",
     });
 
     await expect(
-      seededMember.client.action(api.imageGame.submitPrompt, {
+      submitPromptAsGeneratedImage(t2, seededMember.client, {
         lobbyId: seededLobby.lobbyId,
         prompt: "Second try",
       }),
@@ -272,13 +299,13 @@ describe("convex/imageGame", () => {
     await bob.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
 
     await expect(
-      bob.client.action(api.imageGame.submitPrompt, {
+      submitPromptAsGeneratedImage(t, bob.client, {
         lobbyId,
         prompt: "Late joiner prompt",
       }),
     ).rejects.toThrow("You are spectating this round and cannot submit.");
 
-    await alice.client.action(api.imageGame.submitPrompt, {
+    await submitPromptAsGeneratedImage(t, alice.client, {
       lobbyId,
       prompt: "First prompt",
     });
@@ -315,11 +342,11 @@ describe("convex/imageGame", () => {
       ),
     ).toBe(true);
 
-    await host.client.action(api.imageGame.submitPrompt, {
+    await submitPromptAsGeneratedImage(t, host.client, {
       lobbyId,
       prompt: "Host prompt",
     });
-    await bob.client.action(api.imageGame.submitPrompt, {
+    await submitPromptAsGeneratedImage(t, bob.client, {
       lobbyId,
       prompt: "Bob prompt",
     });

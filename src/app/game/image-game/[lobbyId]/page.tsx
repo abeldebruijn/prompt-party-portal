@@ -1,7 +1,8 @@
 "use client";
 
-import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronLeft,
   Loader2Icon,
@@ -11,10 +12,11 @@ import {
   TrophyIcon,
   UsersIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { submitPrompt as submitPromptServerAction } from "@/app/game/image-game/submitPrompt";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -324,7 +326,6 @@ function GenerateStage({
   runAction: (actionKey: string, operation: () => Promise<void>) => void;
 }) {
   const [promptDraft, setPromptDraft] = useState("");
-  const submitPrompt = useAction(api.imageGame.submitPrompt);
   const advanceToJudge = useMutation(api.imageGame.advanceToJudge);
 
   useEffect(() => {
@@ -341,7 +342,7 @@ function GenerateStage({
           onSubmit={(event) => {
             event.preventDefault();
             void runAction("submit", async () => {
-              await submitPrompt({ lobbyId, prompt: promptDraft });
+              await submitPromptServerAction({ lobbyId, prompt: promptDraft });
             });
           }}
         >
@@ -394,10 +395,12 @@ function GenerateStage({
             Submitted image
           </p>
           {snapshot.round.viewerSubmission.imageUrl ? (
-            <img
-              alt="Your generated submission"
-              className="mt-4 w-full rounded-2xl border border-foreground/10 object-cover"
-              src={snapshot.round.viewerSubmission.imageUrl}
+            <Image
+              alt="Anonymous submission"
+              className="mt-3 w-full aspect-square rounded-2xl border border-foreground/10 object-cover"
+              src={submission.imageUrl}
+              width={1024}
+              height={1024}
             />
           ) : (
             <div className="mt-4 flex items-center gap-2 text-foreground/60">
@@ -569,7 +572,7 @@ function JudgeStage({
             return (
               <div
                 key={submission.submissionId}
-                className="relative rounded-3xl border border-foreground/10 bg-background/75 p-5"
+                className="relative rounded-3xl border border-foreground/10 bg-background/75 p-5 gap-4 grid md:grid-cols-2"
               >
                 {isSaving ? (
                   <div className="absolute right-4 top-4 text-foreground/60">
@@ -577,11 +580,14 @@ function JudgeStage({
                     <span className="sr-only">Saving...</span>
                   </div>
                 ) : null}
+
                 {submission.imageUrl ? (
-                  <img
+                  <Image
                     alt="Anonymous submission"
-                    className="mt-3 w-full rounded-2xl border border-foreground/10 object-cover"
+                    className="mt-3 w-full max-w-80 aspect-square md:size-80 rounded-2xl border border-foreground/10 object-cover"
                     src={submission.imageUrl}
+                    width={1024}
+                    height={1024}
                   />
                 ) : (
                   <div className="mt-3 flex items-center gap-2 text-foreground/60">
@@ -589,13 +595,14 @@ function JudgeStage({
                     <span className="text-sm">Image unavailable</span>
                   </div>
                 )}
-                <p className="mt-4 text-sm leading-6 text-foreground/70">
-                  <span className="font-medium text-foreground/80">
-                    Prompt:
-                  </span>{" "}
-                  {submission.prompt}
-                </p>
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
+
+                <div className="mt-5 space-y-6">
+                  <p className="mt-4 text-sm leading-6 text-foreground/70">
+                    <span className="font-medium text-foreground/80">
+                      Prompt:
+                    </span>{" "}
+                    {submission.prompt}
+                  </p>
                   <RatingSelector
                     label="Correctness"
                     onChange={(value) => {

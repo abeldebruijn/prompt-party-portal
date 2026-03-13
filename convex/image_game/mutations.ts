@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { internalMutation, mutation } from "../_generated/server";
+import { mutation } from "../_generated/server";
 import {
   DEFAULT_TEXT_GAME_ROUND_COUNT,
   IMAGE_GAME_NAME,
@@ -421,7 +421,56 @@ export const advanceAfterPresent = mutation({
   },
 });
 
-export const submitGeneratedImage = internalMutation({
+export const generateUploadUrl = mutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+  },
+  handler: async (ctx, args) => {
+    const membership = await requireImageGameMembership(ctx, args.lobbyId);
+    const session = await getActiveSession(ctx, args.lobbyId);
+
+    if (session === null || session.status !== "InProgress") {
+      throw new Error("The image game is not currently running.");
+    }
+
+    const round = await getCurrentRound(
+      ctx,
+      session._id,
+      session.currentRoundNumber,
+    );
+
+    if (round === null || round.stage !== "Generate") {
+      throw new Error("Prompts can only be submitted during Generate.");
+    }
+
+    if (!round.eligiblePlayerIds.includes(membership.player._id)) {
+      throw new Error("You are spectating this round and cannot submit.");
+    }
+
+    if (membership.player._id === round.targetPlayerId) {
+      throw new Error(
+        "The selected player judges this round and cannot submit.",
+      );
+    }
+
+    const existingSubmission = await ctx.db
+      .query("imageGameSubmissions")
+      .withIndex("roundIdAndAuthorPlayerId", (query) =>
+        query
+          .eq("roundId", round._id)
+          .eq("authorPlayerId", membership.player._id),
+      )
+      .unique();
+
+    if (existingSubmission !== null) {
+      throw new Error("You have already submitted a prompt for this round.");
+    }
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const submitGeneratedImage = mutation({
   args: {
     lobbyId: v.id("lobbies"),
     prompt: v.string(),
