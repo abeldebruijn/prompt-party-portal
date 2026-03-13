@@ -2,27 +2,36 @@
 
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  BellRingIcon,
   Loader2Icon,
   StarIcon,
   StarOff,
-  TrophyIcon,
   UsersIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
-import { SubmissionProgressList } from "@/components/game/submission-progress-list";
 import { PresentStageShell } from "@/components/game/present-stage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api, type Id } from "@/lib/convex";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type GameSnapshot = FunctionReturnType<typeof api.textGame.getGameState>;
+type ProgressEntry = NonNullable<
+  NonNullable<NonNullable<GameSnapshot>["round"]>["progress"]
+>[number];
+type LeaderboardEntry = NonNullable<GameSnapshot>["leaderboard"][number];
+type LeaderboardRow = {
+  entry: LeaderboardEntry | null;
+  progress: ProgressEntry | null;
+  key: string;
+};
 
 function LoadingState() {
   return (
@@ -59,20 +68,45 @@ function SignedOutState() {
 
 function LeaderboardItem({
   entry,
+  progress,
+  pendingAction,
+  viewerPlayerId,
+  onPoke,
 }: {
-  entry: GameSnapshot["leaderboard"][number];
+  entry: LeaderboardEntry | null;
+  progress: ProgressEntry | null;
+  pendingAction?: string | null;
+  viewerPlayerId?: string;
+  onPoke?: (playerId: string) => void;
 }) {
-  const prevRank = useRef(entry.rank);
+  const rank = entry?.rank ?? Number.MAX_SAFE_INTEGER;
+  const prevRank = useRef(rank);
   const [direction, setDirection] = useState<"up" | "down" | "none">("none");
+  const reduceMotion = useReducedMotion();
+  const [isNotified, setIsNotified] = useState(false);
+  const previousPokeAt = useRef<number | null>(
+    progress?.lastPoke?.createdAt ?? null,
+  );
+  const isViewer =
+    progress !== null &&
+    viewerPlayerId !== undefined &&
+    progress.playerId === viewerPlayerId;
+  const canPoke =
+    progress !== null &&
+    onPoke !== undefined &&
+    progress.state === "Pending" &&
+    !isViewer;
+  const showViewerAlert = isViewer && progress?.lastPoke !== null;
+  const latestPokerName = progress?.lastPoke?.pokedByDisplayName ?? null;
 
   useEffect(() => {
-    if (entry.rank < prevRank.current) {
+    if (rank < prevRank.current) {
       setDirection("up");
-    } else if (entry.rank > prevRank.current) {
+    } else if (rank > prevRank.current) {
       setDirection("down");
     }
-    prevRank.current = entry.rank;
-  }, [entry.rank]);
+    prevRank.current = rank;
+  }, [rank]);
 
   useEffect(() => {
     if (direction !== "none") {
@@ -80,6 +114,37 @@ function LeaderboardItem({
       return () => clearTimeout(t);
     }
   }, [direction]);
+
+  useEffect(() => {
+    const latestPokeAt = progress?.lastPoke?.createdAt ?? null;
+
+    if (!isViewer || latestPokeAt === null) {
+      previousPokeAt.current = latestPokeAt;
+      return;
+    }
+
+    if (previousPokeAt.current === null) {
+      previousPokeAt.current = latestPokeAt;
+      return;
+    }
+
+    if (latestPokeAt <= previousPokeAt.current || latestPokerName === null) {
+      return;
+    }
+
+    previousPokeAt.current = latestPokeAt;
+    setIsNotified(true);
+    toast("You were poked", {
+      description: `${latestPokerName} is waiting on your submission.`,
+      duration: 2600,
+      position: "top-center",
+    });
+    const timeoutId = window.setTimeout(() => setIsNotified(false), 1800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isViewer, latestPokerName, progress?.lastPoke?.createdAt]);
+
+  const state = progress?.state ?? null;
 
   return (
     <motion.div
@@ -99,57 +164,222 @@ function LeaderboardItem({
         rotate: { type: "spring", stiffness: 400, damping: 25 },
       }}
       className={cn(
-        "flex items-center justify-between gap-3 rounded-3xl border px-4 py-3 origin-center",
-        entry.rank === 1
+        "relative flex items-start justify-between gap-3 rounded-3xl border px-4 py-3 origin-center",
+        entry?.rank === 1
           ? "border-primary/30 bg-primary/5 shadow-sm shadow-primary/10"
-          : entry.rank === 2
+          : entry?.rank === 2
             ? "border-emerald-500/30 bg-emerald-500/5 shadow-sm shadow-emerald-500/10"
-            : entry.rank === 3
+            : entry?.rank === 3
               ? "border-amber-500/30 bg-amber-500/5 shadow-sm shadow-amber-500/10"
               : "border-foreground/10 bg-background/75",
+        isNotified &&
+          "border-amber-500/55 bg-amber-500/12 ring-2 ring-amber-500/35",
       )}
     >
-      <div className="flex items-center gap-3 overflow-hidden">
-        <span
-          className={cn(
-            "font-mono text-sm font-bold min-w-5",
-            entry.rank === 1
-              ? "text-primary"
-              : entry.rank === 2
-                ? "text-emerald-500"
-                : entry.rank === 3
-                  ? "text-amber-500"
-                  : "text-foreground/50",
+      <AnimatePresence initial={false}>
+        {showViewerAlert ? (
+          <motion.div
+            animate={
+              reduceMotion
+                ? { opacity: 1 }
+                : isNotified
+                  ? { opacity: 1, y: 0, scale: 1 }
+                  : { opacity: 0.92, y: 0, scale: 1 }
+            }
+            className="absolute right-3 top-3 rounded-full border border-amber-500/35 bg-amber-500/14 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] text-amber-900 dark:text-amber-300"
+            exit={{ opacity: 0, y: -6 }}
+            initial={
+              reduceMotion
+                ? { opacity: 1 }
+                : { opacity: 0, y: -10, scale: 0.94 }
+            }
+            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+          >
+            Poke received
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-3 overflow-hidden">
+          {entry ? (
+            <span
+              className={cn(
+                "font-mono text-sm font-bold min-w-5",
+                entry.rank === 1
+                  ? "text-primary"
+                  : entry.rank === 2
+                    ? "text-emerald-500"
+                    : entry.rank === 3
+                      ? "text-amber-500"
+                      : "text-foreground/50",
+              )}
+            >
+              #{entry.rank}
+            </span>
+          ) : (
+            <span className="min-w-5 text-center font-mono text-sm font-bold text-foreground/30">
+              •
+            </span>
           )}
-        >
-          #{entry.rank}
-        </span>
-        <span className="truncate font-medium text-foreground">
-          {entry.displayName}
-        </span>
+          <span className="truncate font-medium text-foreground">
+            {entry?.displayName ?? progress?.displayName ?? "Unknown player"}
+          </span>
+        </div>
+
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          {state ? (
+            <span className="rounded-full border border-foreground/12 bg-foreground/5 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.15em] text-foreground/65">
+              {state}
+            </span>
+          ) : null}
+          {isViewer ? (
+            <span className="text-[0.65rem] font-bold uppercase tracking-[0.15em] text-foreground/45">
+              You
+            </span>
+          ) : null}
+        </div>
+
+        {progress?.lastPoke ? (
+          <motion.div
+            animate={
+              reduceMotion
+                ? { opacity: 1 }
+                : isNotified
+                  ? { opacity: 1, y: [0, -1, 0] }
+                  : { opacity: 0.88, y: 0 }
+            }
+            className={cn(
+              "mt-2 flex items-center gap-1.5 text-xs",
+              showViewerAlert
+                ? "font-medium text-amber-900 dark:text-amber-300"
+                : "text-foreground/70",
+            )}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <motion.span
+              animate={
+                reduceMotion
+                  ? { scale: 1 }
+                  : isNotified
+                    ? { rotate: [-10, 14, -8, 0], scale: [1, 1.18, 1] }
+                    : { rotate: 0, scale: 1 }
+              }
+              className="flex items-center justify-center"
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <BellRingIcon className="size-3.5" />
+            </motion.span>
+            <motion.span
+              animate={
+                reduceMotion
+                  ? { scale: 1, opacity: 1 }
+                  : isNotified
+                    ? { scale: [1, 1.35, 1], opacity: [0.7, 1, 0.82] }
+                    : { scale: 1, opacity: 0.72 }
+              }
+              className="size-1.5 rounded-full bg-current"
+              transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+            />
+            <span>
+              Poked by {progress.lastPoke.pokedByDisplayName}
+              {isViewer ? " just now" : ""}
+            </span>
+          </motion.div>
+        ) : null}
       </div>
-      <div className="flex items-baseline gap-1 shrink-0">
-        <span className="font-mono text-sm font-medium tabular-nums text-foreground/70">
-          {entry.score}
-        </span>
-        <span className="text-xs font-medium text-foreground/40">pts</span>
+
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        {entry ? (
+          <div className="flex items-baseline gap-1">
+            <span className="font-mono text-sm font-medium tabular-nums text-foreground/70">
+              {entry.score}
+            </span>
+            <span className="text-xs font-medium text-foreground/40">pts</span>
+          </div>
+        ) : null}
+
+        {canPoke && progress ? (
+          <Button
+            className="rounded-full"
+            disabled={pendingAction === `poke:${progress.playerId}`}
+            onClick={() => onPoke(progress.playerId)}
+            size="xs"
+            type="button"
+            variant="outline"
+          >
+            {pendingAction === `poke:${progress.playerId}`
+              ? "Poking..."
+              : "Poke"}
+          </Button>
+        ) : null}
       </div>
     </motion.div>
   );
 }
 
+function buildLeaderboardRows(
+  leaderboard: GameSnapshot["leaderboard"],
+  progress: ProgressEntry[] | undefined,
+) {
+  const progressByPlayerId = new Map(
+    (progress ?? []).map((entry) => [entry.playerId, entry]),
+  );
+  const seen = new Set<string>();
+  const rows: LeaderboardRow[] = leaderboard.map((entry) => {
+    seen.add(entry.playerId ?? entry.displayName);
+    return {
+      entry,
+      progress: entry.playerId
+        ? (progressByPlayerId.get(entry.playerId) ?? null)
+        : null,
+      key: entry.playerId ?? entry.displayName,
+    };
+  });
+
+  for (const progressEntry of progress ?? []) {
+    if (seen.has(progressEntry.playerId)) {
+      continue;
+    }
+    rows.push({
+      entry: null,
+      progress: progressEntry,
+      key: progressEntry.playerId,
+    });
+  }
+
+  return rows;
+}
+
 function Leaderboard({
   leaderboard,
+  progress,
+  pendingAction,
+  viewerPlayerId,
+  onPoke,
 }: {
   leaderboard: GameSnapshot["leaderboard"];
+  progress?: ProgressEntry[];
+  pendingAction?: string | null;
+  viewerPlayerId?: string;
+  onPoke?: (playerId: string) => void;
 }) {
+  const rows = useMemo(
+    () => buildLeaderboardRows(leaderboard, progress),
+    [leaderboard, progress],
+  );
+
   return (
     <div className="grid gap-3 relative">
       <AnimatePresence>
-        {leaderboard.map((entry) => (
+        {rows.map((row) => (
           <LeaderboardItem
-            key={entry.playerId ?? entry.displayName}
-            entry={entry}
+            key={row.key}
+            entry={row.entry}
+            onPoke={onPoke}
+            pendingAction={pendingAction}
+            progress={row.progress}
+            viewerPlayerId={viewerPlayerId}
           />
         ))}
       </AnimatePresence>
@@ -392,6 +622,7 @@ function JudgeStage({
   >({});
   const rateSubmission = useMutation(api.textGame.rateSubmission);
   const advanceToPresent = useMutation(api.textGame.advanceToPresent);
+  const skipToPresent = useMutation(api.textGame.skipToPresent);
 
   useEffect(() => {
     if (!snapshot.round.judgeSubmissions.length) {
@@ -545,36 +776,63 @@ function JudgeStage({
             );
           })}
 
-          <div className="mt-4 flex items-center justify-end gap-4">
-            {!allSubmissionsRated && (
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-4">
+            {isJudge && !allSubmissionsRated && (
               <p className="text-sm text-foreground/60">
                 Please rate all submissions before continuing
               </p>
             )}
 
-            <Button
-              className="rounded-full px-6"
-              disabled={
-                !allSubmissionsRated ||
-                hasPendingSave ||
-                pendingAction === "advanceToPresent"
-              }
-              onClick={() =>
-                void runAction("advanceToPresent", async () => {
-                  await advanceToPresent({ lobbyId });
-                })
-              }
-              type="button"
-            >
-              {pendingAction === "advanceToPresent" ? (
-                <>
-                  <Loader2Icon className="size-4 animate-spin" />
-                  Continuing...
-                </>
-              ) : (
-                "Continue to next round"
-              )}
-            </Button>
+            {snapshot.viewer.isHost ? (
+              <Button
+                className="rounded-full px-6"
+                disabled={
+                  hasPendingSave || pendingAction === "skipToPresent"
+                }
+                onClick={() =>
+                  void runAction("skipToPresent", async () => {
+                    await skipToPresent({ lobbyId });
+                  })
+                }
+                type="button"
+                variant="outline"
+              >
+                {pendingAction === "skipToPresent" ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Skipping...
+                  </>
+                ) : (
+                  "Skip to present"
+                )}
+              </Button>
+            ) : null}
+
+            {isJudge ? (
+              <Button
+                className="rounded-full px-6"
+                disabled={
+                  !allSubmissionsRated ||
+                  hasPendingSave ||
+                  pendingAction === "advanceToPresent"
+                }
+                onClick={() =>
+                  void runAction("advanceToPresent", async () => {
+                    await advanceToPresent({ lobbyId });
+                  })
+                }
+                type="button"
+              >
+                {pendingAction === "advanceToPresent" ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Continuing...
+                  </>
+                ) : (
+                  "Continue to next round"
+                )}
+              </Button>
+            ) : null}
           </div>
         </div>
       ) : (
@@ -592,6 +850,31 @@ function JudgeStage({
             </strong>{" "}
             is rating the anonymous answers now.
           </p>
+
+          {snapshot.viewer.isHost ? (
+            <Button
+              className="rounded-full px-6"
+              disabled={
+                pendingAction === "skipToPresent" || hasPendingSave
+              }
+              onClick={() =>
+                void runAction("skipToPresent", async () => {
+                  await skipToPresent({ lobbyId });
+                })
+              }
+              type="button"
+              variant="outline"
+            >
+              {pendingAction === "skipToPresent" ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Skipping...
+                </>
+              ) : (
+                "Skip to present"
+              )}
+            </Button>
+          ) : null}
         </div>
       )}
     </div>
@@ -849,38 +1132,27 @@ export default function TextGamePage() {
         </div>
 
         <div className="space-y-6 xl:sticky xl:top-16">
-          <SurfaceCard>
-            <div className="flex items-center gap-3">
-              <UsersIcon className="size-5 text-primary" />
-              <SurfaceCardTitle className="text-2xl">
-                Submission progress
-              </SurfaceCardTitle>
-            </div>
-            <div className="mt-6">
-              <SubmissionProgressList
-                onPoke={(playerId) =>
-                  void runAction(`poke:${playerId}`, async () => {
-                    await pokePlayer({
-                      lobbyId,
-                      playerId: playerId as Id<"lobbyPlayers">,
-                    });
-                  })
-                }
-                pendingAction={pendingAction}
-                progress={snapshot.round.progress}
-                viewerPlayerId={snapshot.viewer.playerId}
-              />
-            </div>
-          </SurfaceCard>
-
           {snapshot.round.stage !== "Judge" && (
             <SurfaceCard>
               <SurfaceCardTitle className="text-2xl">
-                <TrophyIcon className="size-5 text-primary" />
+                <UsersIcon className="size-5 text-primary" />
                 Leaderboard
               </SurfaceCardTitle>
               <div className="mt-6">
-                <Leaderboard leaderboard={snapshot.leaderboard} />
+                <Leaderboard
+                  leaderboard={snapshot.leaderboard}
+                  onPoke={(playerId) =>
+                    void runAction(`poke:${playerId}`, async () => {
+                      await pokePlayer({
+                        lobbyId,
+                        playerId: playerId as Id<"lobbyPlayers">,
+                      });
+                    })
+                  }
+                  pendingAction={pendingAction}
+                  progress={snapshot.round.progress}
+                  viewerPlayerId={snapshot.viewer.playerId}
+                />
               </div>
             </SurfaceCard>
           )}
