@@ -14,7 +14,9 @@ import {
   PLACEHOLDER_GAMES,
   sanitizeSummary,
   sanitizeUsername,
+  TEXT_GAME_NAME,
 } from "../lib/lobby";
+import { removeKickedPlayerFromActiveTextGame } from "../text_game/helpers";
 
 import {
   assignJoinCode,
@@ -293,6 +295,10 @@ export const kickPlayer = mutation({
 
     if (vote) {
       await ctx.db.delete(vote._id);
+    }
+
+    if (lobby.selectedGame === TEXT_GAME_NAME) {
+      await removeKickedPlayerFromActiveTextGame(ctx, lobby, player, now);
     }
 
     await ctx.db.patch(lobby._id, { lastActivityAt: now });

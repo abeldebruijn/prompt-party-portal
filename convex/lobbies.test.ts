@@ -528,7 +528,7 @@ describe("convex/lobbies", () => {
         ],
       }),
     ).rejects.toThrow(
-      "Leaderboard entries must reference players from the same lobby.",
+      "Leaderboard entries must reference active players from the same lobby.",
     );
 
     const completed = await firstLobby.host.client.mutation(
@@ -554,6 +554,37 @@ describe("convex/lobbies", () => {
       }),
     ).rejects.toThrow(
       "This lobby has already wrapped up. Ask the host to reset it first.",
+    );
+  });
+
+  it("prevents removed players from appearing on a completion leaderboard", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createLobbyFixture(t);
+    const member = await createViewer(t, { name: "Member" });
+    const joined = await member.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+
+    await host.client.mutation(api.lobbies.startRound, { lobbyId });
+    await host.client.mutation(api.lobbies.kickPlayer, {
+      lobbyId,
+      playerId: joined.playerId,
+    });
+
+    await expect(
+      host.client.mutation(api.lobbies.completeLobby, {
+        lobbyId,
+        leaderboard: [
+          {
+            playerId: joined.playerId,
+            displayName: "Member",
+            rank: 1,
+            score: 10,
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Leaderboard entries must reference active players from the same lobby.",
     );
   });
 });

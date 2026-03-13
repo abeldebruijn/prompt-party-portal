@@ -359,4 +359,92 @@ describe("convex/textGame", () => {
       expect.objectContaining({ displayName: "Bob", rank: 3, score: 2 }),
     ]);
   });
+
+  it("reassigns a kicked target and removes them from the text-game leaderboard", async () => {
+    const t = createConvexTest();
+    const { host, lobbyId, joinCode } = await createTextGameLobby(t);
+    const alice = await createViewer(t, { name: "Alice" });
+    const bob = await createViewer(t, { name: "Bob" });
+
+    await seedPrompts(t);
+    await alice.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await bob.client.mutation(api.lobbies.joinLobbyByCode, { joinCode });
+    await host.client.mutation(api.textGame.updateSettings, {
+      lobbyId,
+      roundCount: 2,
+    });
+    await host.client.mutation(api.textGame.startGame, { lobbyId });
+
+    await alice.client.mutation(api.textGame.submitAnswer, {
+      lobbyId,
+      answer: "Alice takes the lead",
+    });
+    await bob.client.mutation(api.textGame.submitAnswer, {
+      lobbyId,
+      answer: "Bob keeps it tidy",
+    });
+
+    const firstJudgeState = await host.client.query(api.textGame.getGameState, {
+      lobbyId,
+    });
+    const [aliceSubmission, bobSubmission] =
+      firstJudgeState.round?.judgeSubmissions ?? [];
+
+    await host.client.mutation(api.textGame.rateSubmission, {
+      lobbyId,
+      submissionId: aliceSubmission?.submissionId as Id<"textGameSubmissions">,
+      correctnessStars: 5,
+      creativityStars: 5,
+    });
+    await host.client.mutation(api.textGame.rateSubmission, {
+      lobbyId,
+      submissionId: bobSubmission?.submissionId as Id<"textGameSubmissions">,
+      correctnessStars: 1,
+      creativityStars: 1,
+    });
+    await host.client.mutation(api.textGame.advanceToPresent, { lobbyId });
+
+    await expireCurrentPresentRound(t, lobbyId);
+    await bob.client.mutation(api.textGame.advanceAfterPresent, { lobbyId });
+
+    const secondRoundBeforeKick = await host.client.query(
+      api.textGame.getGameState,
+      { lobbyId },
+    );
+    const alicePlayerId = secondRoundBeforeKick.round?.targetPlayer
+      ?.playerId as Id<"lobbyPlayers">;
+
+    expect(secondRoundBeforeKick.round?.targetPlayer?.displayName).toBe(
+      "Alice",
+    );
+    expect(
+      secondRoundBeforeKick.leaderboard.find(
+        (entry) => entry.displayName === "Alice",
+      )?.score,
+    ).toBe(10);
+
+    await host.client.mutation(api.lobbies.kickPlayer, {
+      lobbyId,
+      playerId: alicePlayerId,
+    });
+
+    await expect(
+      alice.client.query(api.textGame.getGameState, { lobbyId }),
+    ).rejects.toThrow("You must be an active player in this lobby.");
+
+    const secondRoundAfterKick = await host.client.query(
+      api.textGame.getGameState,
+      { lobbyId },
+    );
+
+    expect(secondRoundAfterKick.round?.targetPlayer?.displayName).toBe("Bob");
+    expect(
+      secondRoundAfterKick.round?.progress.some(
+        (entry) => entry.displayName === "Alice",
+      ),
+    ).toBe(false);
+    expect(
+      secondRoundAfterKick.leaderboard.map((entry) => entry.displayName),
+    ).toEqual(["Bob", "Host Person"]);
+  });
 });

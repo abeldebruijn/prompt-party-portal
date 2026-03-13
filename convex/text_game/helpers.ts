@@ -4,6 +4,7 @@ import { requireViewer } from "../lib/auth";
 import {
   DEFAULT_TEXT_GAME_ROUND_COUNT,
   MAX_TEXT_GAME_ROUND_COUNT,
+  sanitizeSummary,
   sanitizeTextGameAnswer,
   TEXT_GAME_NAME,
 } from "../lib/lobby";
@@ -234,16 +235,22 @@ export async function computeLeaderboard(
   );
   const scoreMap = new Map<string, number>();
   const nameMap = new Map<string, string>();
+  const activePlayerIds = new Set<string>();
 
   for (const player of players) {
-    if (player !== null) {
+    if (player?.isActive === true) {
       scoreMap.set(player._id, 0);
       nameMap.set(player._id, player.displayName);
+      activePlayerIds.add(player._id);
     }
   }
 
   for (const submissions of submissionsByRound) {
     for (const submission of submissions) {
+      if (!activePlayerIds.has(submission.authorPlayerId)) {
+        continue;
+      }
+
       const score = submission.totalScore ?? 0;
       scoreMap.set(
         submission.authorPlayerId,
@@ -322,4 +329,133 @@ export async function moveRoundToPresent(
     stageStartedAt: now,
     presentEndsAt: now + PRESENT_DURATION_MS,
   });
+}
+
+export async function removeKickedPlayerFromActiveTextGame(
+  ctx: MutationCtx,
+  lobby: Doc<"lobbies">,
+  kickedPlayer: Doc<"lobbyPlayers">,
+  now: number,
+) {
+  if (lobby.selectedGame !== TEXT_GAME_NAME || lobby.state !== "Playing") {
+    return { completedEarly: false };
+  }
+
+  const session = await getActiveSession(ctx, lobby._id);
+
+  if (session === null || session.status !== "InProgress") {
+    return { completedEarly: false };
+  }
+
+  const round = await getCurrentRound(
+    ctx,
+    session._id,
+    session.currentRoundNumber,
+  );
+
+  if (round === null) {
+    return { completedEarly: false };
+  }
+
+  const currentRoundSubmission = await ctx.db
+    .query("textGameSubmissions")
+    .withIndex("roundIdAndAuthorPlayerId", (query) =>
+      query.eq("roundId", round._id).eq("authorPlayerId", kickedPlayer._id),
+    )
+    .unique();
+
+  if (currentRoundSubmission !== null) {
+    await ctx.db.delete(currentRoundSubmission._id);
+  }
+
+  const remainingEligiblePlayers = (
+    await Promise.all(
+      round.eligiblePlayerIds
+        .filter((playerId) => playerId !== kickedPlayer._id)
+        .map((playerId) => ctx.db.get(playerId)),
+    )
+    )
+    .filter(
+      (player): player is Doc<"lobbyPlayers"> =>
+        player?.isActive === true && player.kind === "human",
+    )
+    .sort(sortPlayers);
+  const remainingEligiblePlayerIds = remainingEligiblePlayers.map(
+    (player) => player._id,
+  );
+
+  if (remainingEligiblePlayerIds.length < 2) {
+    const leaderboard = await computeLeaderboard(ctx, session._id);
+
+    await ctx.db.insert("lobbyCompletions", {
+      lobbyId: lobby._id,
+      completedByUserId: lobby.hostUserId,
+      selectedGame: lobby.selectedGame,
+      completedAt: now,
+      summary: sanitizeSummary(
+        "Text game ended early after a player was removed. Final leaderboard is ready.",
+      ),
+      leaderboard: leaderboard.map((entry) => ({
+        playerId: entry.playerId,
+        displayName: entry.displayName,
+        rank: entry.rank,
+        score: entry.score,
+      })),
+    });
+
+    await ctx.db.patch(session._id, {
+      status: "Completed",
+      completedAt: now,
+    });
+
+    await ctx.db.patch(lobby._id, {
+      state: "Completion",
+      completedAt: now,
+      lastActivityAt: now,
+    });
+
+    return { completedEarly: true };
+  }
+
+  const roundPatch: Partial<Doc<"textGameRounds">> = {
+    eligiblePlayerIds: remainingEligiblePlayerIds,
+  };
+
+  if (round.targetPlayerId === kickedPlayer._id) {
+    const prompt = await ctx.db.get(round.promptId);
+
+    if (prompt === null || !prompt.isActive) {
+      throw new Error("The requested text-game prompt could not be found.");
+    }
+
+    const nextTargetPlayer =
+      remainingEligiblePlayers[
+        (round.roundNumber - 1) % remainingEligiblePlayers.length
+      ];
+
+    roundPatch.targetPlayerId = nextTargetPlayer._id;
+    roundPatch.promptText = renderPrompt(
+      prompt.template,
+      nextTargetPlayer.displayName,
+    );
+  }
+
+  const remainingSubmissions = await listRoundSubmissions(ctx, round._id);
+  const expectedSubmissionCount = Math.max(
+    remainingEligiblePlayerIds.length - 1,
+    0,
+  );
+
+  if (
+    round.stage === "Generate" &&
+    remainingSubmissions.length >= expectedSubmissionCount
+  ) {
+    roundPatch.stage = "Judge";
+    roundPatch.stageStartedAt = now;
+    roundPatch.presentEndsAt = undefined;
+  }
+
+  await ctx.db.patch(round._id, roundPatch);
+
+  return { completedEarly: false };
 }

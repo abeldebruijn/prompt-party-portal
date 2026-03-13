@@ -195,9 +195,9 @@ export async function validateLeaderboardPlayers(
   );
 
   for (const player of players) {
-    if (player === null || player.lobbyId !== lobbyId) {
+    if (player === null || player.lobbyId !== lobbyId || !player.isActive) {
       throw new Error(
-        "Leaderboard entries must reference players from the same lobby.",
+        "Leaderboard entries must reference active players from the same lobby.",
       );
     }
   }
