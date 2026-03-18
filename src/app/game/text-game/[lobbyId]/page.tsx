@@ -357,12 +357,14 @@ function Leaderboard({
   pendingAction,
   viewerPlayerId,
   onPoke,
+  canPoke = false,
 }: {
   leaderboard: GameSnapshot["leaderboard"];
   progress?: ProgressEntry[];
   pendingAction?: string | null;
   viewerPlayerId?: string;
   onPoke?: (playerId: string) => void;
+  canPoke?: boolean;
 }) {
   const rows = useMemo(
     () => buildLeaderboardRows(leaderboard, progress),
@@ -376,7 +378,7 @@ function Leaderboard({
           <LeaderboardItem
             key={row.key}
             entry={row.entry}
-            onPoke={onPoke}
+            onPoke={canPoke ? onPoke : undefined}
             pendingAction={pendingAction}
             progress={row.progress}
             viewerPlayerId={viewerPlayerId}
@@ -1086,7 +1088,14 @@ export default function TextGamePage() {
         </div>
       </div>
 
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start xl:gap-8">
+      <section
+        className={cn(
+          "grid gap-6 xl:items-start xl:gap-8",
+          snapshot.round.stage === "Judge"
+            ? "xl:grid-cols-1"
+            : "xl:grid-cols-[1.1fr_0.9fr]",
+        )}
+      >
         <div className="space-y-6">
           <SurfaceCard>
             <SurfaceCardTitle className="text-3xl sm:text-4xl leading-tight">
@@ -1140,6 +1149,7 @@ export default function TextGamePage() {
               </SurfaceCardTitle>
               <div className="mt-6">
                 <Leaderboard
+                  canPoke={snapshot.round.stage === "Generate"}
                   leaderboard={snapshot.leaderboard}
                   onPoke={(playerId) =>
                     void runAction(`poke:${playerId}`, async () => {

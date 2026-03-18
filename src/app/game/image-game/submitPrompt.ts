@@ -41,9 +41,10 @@ export async function generateImagePreview(args: {
   const prompt = sanitizePromptOrThrow(args.prompt);
 
   const { image } = await generateImage({
-    model: gateway.image("openai/gpt-image-1-mini"),
+    // model: gateway.image("openai/gpt-image-1-mini"),
+    model: gateway.image("prodia/flux-fast-schnell"),
     prompt,
-    size: "1024x1024",
+    size: "512x512",
   });
 
   const uploadUrl = await client.mutation(api.imageGame.generateUploadUrl, {
