@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { LobbyTextarea } from "@/app/lobby/_components/lobby-ui";
 import { PresentStageShell } from "@/components/game/present-stage";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api, type Id } from "@/lib/convex";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 type GameSnapshot = FunctionReturnType<typeof api.textGame.getGameState>;
 type ProgressEntry = NonNullable<
@@ -788,9 +788,7 @@ function JudgeStage({
             {snapshot.viewer.isHost ? (
               <Button
                 className="rounded-full px-6"
-                disabled={
-                  hasPendingSave || pendingAction === "skipToPresent"
-                }
+                disabled={hasPendingSave || pendingAction === "skipToPresent"}
                 onClick={() =>
                   void runAction("skipToPresent", async () => {
                     await skipToPresent({ lobbyId });
@@ -856,9 +854,7 @@ function JudgeStage({
           {snapshot.viewer.isHost ? (
             <Button
               className="rounded-full px-6"
-              disabled={
-                pendingAction === "skipToPresent" || hasPendingSave
-              }
+              disabled={pendingAction === "skipToPresent" || hasPendingSave}
               onClick={() =>
                 void runAction("skipToPresent", async () => {
                   await skipToPresent({ lobbyId });
@@ -1003,7 +999,6 @@ function PresentStage({
           )}
         </Button>
       ) : null}
-
     </PresentStageShell>
   );
 }

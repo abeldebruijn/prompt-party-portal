@@ -288,8 +288,12 @@ describe("convex/imageGame", () => {
 
   it("stores the latest poker for pending players and blocks invalid image-game pokes", async () => {
     const t = createConvexTest();
-    const { host, lobbyId, joinCode, playerId: hostPlayerId } =
-      await createImageGameLobby(t);
+    const {
+      host,
+      lobbyId,
+      joinCode,
+      playerId: hostPlayerId,
+    } = await createImageGameLobby(t);
     const alice = await createViewer(t, { name: "Alice" });
     const bob = await createViewer(t, { name: "Bob" });
 
@@ -327,8 +331,9 @@ describe("convex/imageGame", () => {
     ).rejects.toThrow("You cannot poke yourself.");
 
     await expect(
-      (
-        judgePlayer?.playerId === hostPlayerId ? alice.client : host.client
+      (judgePlayer?.playerId === hostPlayerId
+        ? alice.client
+        : host.client
       ).mutation(api.imageGame.pokePlayer, {
         lobbyId,
         playerId: judgePlayer?.playerId as Id<"lobbyPlayers">,
@@ -522,8 +527,12 @@ describe("convex/imageGame", () => {
 
   it("lets the host skip to judge with partial submissions", async () => {
     const t = createConvexTest();
-    const { host, lobbyId, joinCode, playerId: hostPlayerId } =
-      await createImageGameLobby(t);
+    const {
+      host,
+      lobbyId,
+      joinCode,
+      playerId: hostPlayerId,
+    } = await createImageGameLobby(t);
     const alice = await createViewer(t, { name: "Alice" });
     const bob = await createViewer(t, { name: "Bob" });
 
@@ -552,7 +561,9 @@ describe("convex/imageGame", () => {
       [aliceJoin.playerId, alice.client],
       [bobJoin.playerId, bob.client],
     ]);
-    const submittingClient = clientByPlayerId.get(pendingPlayer?.playerId ?? "");
+    const submittingClient = clientByPlayerId.get(
+      pendingPlayer?.playerId ?? "",
+    );
     const judgingClient = clientByPlayerId.get(targetPlayerId ?? "");
 
     expect(generateState.round?.stage).toBe("Generate");

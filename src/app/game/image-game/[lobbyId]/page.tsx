@@ -14,6 +14,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   generateImagePreview,
   submitGeneratedPreview,
@@ -25,7 +26,6 @@ import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api, type Id } from "@/lib/convex";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 type GameSnapshot = FunctionReturnType<typeof api.imageGame.getGameState>;
 type ProgressEntry = NonNullable<
@@ -931,9 +931,7 @@ function JudgeStage({
             {snapshot.viewer.isHost ? (
               <Button
                 className="rounded-full px-6"
-                disabled={
-                  hasPendingSave || pendingAction === "skipToPresent"
-                }
+                disabled={hasPendingSave || pendingAction === "skipToPresent"}
                 onClick={() =>
                   void runAction("skipToPresent", async () => {
                     await skipToPresent({ lobbyId });
@@ -999,9 +997,7 @@ function JudgeStage({
           {snapshot.viewer.isHost ? (
             <Button
               className="rounded-full px-6"
-              disabled={
-                pendingAction === "skipToPresent" || hasPendingSave
-              }
+              disabled={pendingAction === "skipToPresent" || hasPendingSave}
               onClick={() =>
                 void runAction("skipToPresent", async () => {
                   await skipToPresent({ lobbyId });

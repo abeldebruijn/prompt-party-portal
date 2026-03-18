@@ -318,8 +318,12 @@ describe("convex/textGame", () => {
 
   it("lets the host skip to judge with partial submissions", async () => {
     const t = createConvexTest();
-    const { host, lobbyId, joinCode, playerId: hostPlayerId } =
-      await createTextGameLobby(t);
+    const {
+      host,
+      lobbyId,
+      joinCode,
+      playerId: hostPlayerId,
+    } = await createTextGameLobby(t);
     const alice = await createViewer(t, { name: "Alice" });
     const bob = await createViewer(t, { name: "Bob" });
 
@@ -348,7 +352,9 @@ describe("convex/textGame", () => {
       [aliceJoin.playerId, alice.client],
       [bobJoin.playerId, bob.client],
     ]);
-    const submittingClient = clientByPlayerId.get(pendingPlayer?.playerId ?? "");
+    const submittingClient = clientByPlayerId.get(
+      pendingPlayer?.playerId ?? "",
+    );
     const judgingClient = clientByPlayerId.get(targetPlayerId ?? "");
 
     expect(generateState.round?.stage).toBe("Generate");
