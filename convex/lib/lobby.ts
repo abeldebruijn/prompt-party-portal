@@ -1,12 +1,11 @@
 import { v } from "convex/values";
 
-export const PLACEHOLDER_GAMES = [
-  "Generate image that fits",
-  "Pick image that suits a situation",
-  "Pick text that suits a situation",
-] as const;
+export const DEPRECATED_IMAGE_GENERATION_GAME_NAME =
+  "Generate image that fits" as const;
 export const IMAGE_GAME_NAME = "Pick image that suits a situation" as const;
 export const TEXT_GAME_NAME = "Pick text that suits a situation" as const;
+export const PLACEHOLDER_GAMES = [IMAGE_GAME_NAME, TEXT_GAME_NAME] as const;
+export const DEFAULT_LOBBY_GAME = IMAGE_GAME_NAME;
 export const DEFAULT_TEXT_GAME_ROUND_COUNT = 10;
 export const MAX_TEXT_GAME_ROUND_COUNT = 20;
 
@@ -23,9 +22,8 @@ export type LobbyState = (typeof LOBBY_STATES)[number];
 export type AiPersonalityType = (typeof AI_PERSONALITY_TYPES)[number];
 
 export const lobbyGameValidator = v.union(
-  v.literal("Generate image that fits"),
-  v.literal("Pick image that suits a situation"),
-  v.literal("Pick text that suits a situation"),
+  v.literal(IMAGE_GAME_NAME),
+  v.literal(TEXT_GAME_NAME),
 );
 
 export const lobbyStateValidator = v.union(

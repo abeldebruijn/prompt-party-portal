@@ -1,6 +1,17 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+  IMAGE_GAME_NAME,
+  TEXT_GAME_NAME,
+} from "./lib/lobby";
+
+const lobbyGameValue = v.union(
+  v.literal(DEPRECATED_IMAGE_GENERATION_GAME_NAME),
+  v.literal(IMAGE_GAME_NAME),
+  v.literal(TEXT_GAME_NAME),
+);
 
 const schema = defineSchema({
   ...authTables,
@@ -20,11 +31,7 @@ const schema = defineSchema({
   lobbies: defineTable({
     joinCode: v.string(),
     hostUserId: v.id("users"),
-    selectedGame: v.union(
-      v.literal("Generate image that fits"),
-      v.literal("Pick image that suits a situation"),
-      v.literal("Pick text that suits a situation"),
-    ),
+    selectedGame: lobbyGameValue,
     state: v.union(
       v.literal("Creation"),
       v.literal("Playing"),
@@ -71,11 +78,7 @@ const schema = defineSchema({
   lobbyGameVotes: defineTable({
     lobbyId: v.id("lobbies"),
     playerId: v.id("lobbyPlayers"),
-    game: v.union(
-      v.literal("Generate image that fits"),
-      v.literal("Pick image that suits a situation"),
-      v.literal("Pick text that suits a situation"),
-    ),
+    game: lobbyGameValue,
     updatedAt: v.number(),
   })
     .index("lobbyId", ["lobbyId"])
@@ -84,11 +87,7 @@ const schema = defineSchema({
   lobbyCompletions: defineTable({
     lobbyId: v.id("lobbies"),
     completedByUserId: v.id("users"),
-    selectedGame: v.union(
-      v.literal("Generate image that fits"),
-      v.literal("Pick image that suits a situation"),
-      v.literal("Pick text that suits a situation"),
-    ),
+    selectedGame: lobbyGameValue,
     completedAt: v.number(),
     summary: v.optional(v.string()),
     leaderboard: v.array(
