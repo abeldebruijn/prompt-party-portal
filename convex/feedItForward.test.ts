@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { FEED_IT_FORWARD_ALL_SUBMITTED_ROUND_CAP_MS } from "./feed_it_forward/constants";
 import { FEED_IT_FORWARD_GAME_NAME } from "./lib/lobby";
 import { createConvexTest } from "./test.setup";
 
@@ -105,8 +106,70 @@ async function seedFinalizedSetupSlot(
   });
 }
 
+async function startTwoPlayerFeedItForwardGame(
+  t: TestBackend,
+  options: {
+    setupPromptCount?: number;
+    roundDurationSeconds?: number;
+  } = {},
+) {
+  const {
+    host,
+    lobbyId,
+    joinCode,
+    playerId: hostPlayerId,
+  } = await createFeedLobby(t);
+  const member = await createViewer(t, { name: "Alice Example" });
+  const joined = await member.client.mutation(api.lobbies.joinLobbyByCode, {
+    joinCode,
+  });
+  const setupPromptCount = options.setupPromptCount ?? 1;
+  const roundDurationSeconds = options.roundDurationSeconds ?? 45;
+
+  await host.client.mutation(api.feedItForward.updateSettings, {
+    lobbyId,
+    setupPromptCount,
+    roundDurationSeconds,
+  });
+
+  for (let slotIndex = 0; slotIndex < setupPromptCount; slotIndex += 1) {
+    await seedFinalizedSetupSlot(t, {
+      lobbyId,
+      playerId: hostPlayerId,
+      slotIndex,
+      prompt: `Host seed ${slotIndex + 1}`,
+    });
+    await seedFinalizedSetupSlot(t, {
+      lobbyId,
+      playerId: joined.playerId,
+      slotIndex,
+      prompt: `Guest seed ${slotIndex + 1}`,
+    });
+  }
+
+  await host.client.mutation(api.feedItForward.startGame, { lobbyId });
+
+  const snapshot = await host.client.query(api.feedItForward.getGameState, {
+    lobbyId,
+  });
+
+  return {
+    host,
+    member,
+    joined,
+    lobbyId,
+    hostPlayerId,
+    round: requireValue(snapshot.round, "started round"),
+  };
+}
+
 describe("convex/feedItForward", () => {
+  beforeEach(() => {
+    process.env.FEED_IT_FORWARD_MOCK = "1";
+  });
+
   afterEach(() => {
+    delete process.env.FEED_IT_FORWARD_MOCK;
     vi.useRealTimers();
   });
 
@@ -166,6 +229,150 @@ describe("convex/feedItForward", () => {
     expect(snapshot.session?.status).toBe("Playing");
     expect(snapshot.round?.roundNumber).toBe(1);
     expect(snapshot.round?.sourceImageUrl).toBeTruthy();
+  });
+
+  it("caps the round deadline to 10 seconds when all participants have submitted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-19T09:00:00.000Z"));
+
+    const t = createConvexTest();
+    const { host, member, lobbyId } = await startTwoPlayerFeedItForwardGame(t);
+
+    const startingState = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    const originalEndsAt = requireValue(
+      startingState.round,
+      "round before submissions",
+    ).endsAt;
+
+    await host.client.mutation(api.feedItForward.submitPrompt, {
+      lobbyId,
+      prompt: "Host prompt",
+    });
+
+    const afterFirstSubmission = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    expect(
+      requireValue(afterFirstSubmission.round, "round after first submit")
+        .endsAt,
+    ).toBe(originalEndsAt);
+
+    await member.client.mutation(api.feedItForward.submitPrompt, {
+      lobbyId,
+      prompt: "Guest prompt",
+    });
+
+    const afterSecondSubmission = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    const shortenedRound = requireValue(
+      afterSecondSubmission.round,
+      "round after second submit",
+    );
+
+    expect(shortenedRound.endsAt).toBe(
+      Date.now() + FEED_IT_FORWARD_ALL_SUBMITTED_ROUND_CAP_MS,
+    );
+    expect(shortenedRound.endsAt).toBeLessThan(originalEndsAt);
+  });
+
+  it("does not shorten the round when 10 seconds or less remain", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-19T09:30:00.000Z"));
+
+    const t = createConvexTest();
+    const { host, member, lobbyId } = await startTwoPlayerFeedItForwardGame(t);
+
+    const startingState = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    const originalEndsAt = requireValue(
+      startingState.round,
+      "round before submissions",
+    ).endsAt;
+
+    await host.client.mutation(api.feedItForward.submitPrompt, {
+      lobbyId,
+      prompt: "Host prompt",
+    });
+
+    vi.advanceTimersByTime(36_000);
+    vi.setSystemTime(Date.now());
+
+    await member.client.mutation(api.feedItForward.submitPrompt, {
+      lobbyId,
+      prompt: "Guest prompt",
+    });
+
+    const afterSecondSubmission = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+
+    expect(
+      requireValue(afterSecondSubmission.round, "round after late submit")
+        .endsAt,
+    ).toBe(originalEndsAt);
+  });
+
+  it("does not extend the shortened deadline on resubmission", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-19T09:45:00.000Z"));
+
+    const t = createConvexTest();
+    const { host, member, lobbyId } = await startTwoPlayerFeedItForwardGame(t);
+
+    await host.client.mutation(api.feedItForward.submitPrompt, {
+      lobbyId,
+      prompt: "Host prompt",
+    });
+    await member.client.mutation(api.feedItForward.submitPrompt, {
+      lobbyId,
+      prompt: "Guest prompt",
+    });
+
+    const cappedState = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    const cappedEndsAt = requireValue(cappedState.round, "capped round").endsAt;
+
+    vi.advanceTimersByTime(3_000);
+    vi.setSystemTime(Date.now());
+
+    await host.client.mutation(api.feedItForward.submitPrompt, {
+      lobbyId,
+      prompt: "Host prompt revised",
+    });
+
+    const resubmittedState = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+
+    expect(
+      requireValue(resubmittedState.round, "resubmitted round").endsAt,
+    ).toBe(cappedEndsAt);
   });
 
   it("waits at least 15 seconds before advancing when images are ready at deadline", async () => {

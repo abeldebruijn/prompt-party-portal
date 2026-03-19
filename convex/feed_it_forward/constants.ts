@@ -1,6 +1,7 @@
 import type { ImageModel, LanguageModel } from "ai";
 
 export const FEED_IT_FORWARD_EMBEDDING_DIMENSIONS = 1536;
+export const FEED_IT_FORWARD_ALL_SUBMITTED_ROUND_CAP_MS = 10_000;
 export const FEED_IT_FORWARD_MINIMUM_INTER_ROUND_WAIT_MS = 15_000;
 export const FEED_IT_FORWARD_PROMPT_WRITER_INSTRUCTIONS = `You are a whimsical prompt‑writer for the game **Feed It Forward**.
 Create a single, vivid description of an *impossible* scene that could never happen in real life, but is full of fun, creativity, and a touch of nonsense.

@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { mutation } from "../_generated/server";
+import { type MutationCtx, mutation } from "../_generated/server";
+import { FEED_IT_FORWARD_ALL_SUBMITTED_ROUND_CAP_MS } from "./constants";
 import {
   clampRoundDurationSeconds,
   clampSetupPromptCount,
@@ -14,11 +15,53 @@ import {
   getCurrentRound,
   getSetupSlot,
   listActiveHumanPlayers,
+  listRoundSubmissions,
   listSetupSlots,
   requireFeedItForwardHost,
   requireFeedItForwardMembership,
   sanitizePromptInput,
 } from "./helpers";
+
+async function maybeCapRoundDeadlineAfterSubmission(
+  ctx: MutationCtx,
+  roundId: Id<"feedItForwardRounds">,
+  participantCount: number,
+) {
+  const round = await ctx.db.get(roundId);
+
+  if (round === null || round.status !== "Playing") {
+    return;
+  }
+
+  const submissions = await listRoundSubmissions(ctx, roundId);
+  const submittedPlayerIds = new Set(
+    submissions.map((submission) => submission.authorPlayerId),
+  );
+
+  if (submittedPlayerIds.size < participantCount) {
+    return;
+  }
+
+  const now = Date.now();
+  const shortenedEndsAt = now + FEED_IT_FORWARD_ALL_SUBMITTED_ROUND_CAP_MS;
+
+  if (round.endsAt <= shortenedEndsAt) {
+    return;
+  }
+
+  await ctx.db.patch(round._id, {
+    endsAt: shortenedEndsAt,
+  });
+  await ctx.scheduler.runAt(
+    shortenedEndsAt,
+    internal.feedItForwardInternal.handleRoundDeadline,
+    { roundId: round._id },
+  );
+}
+
+function shouldScheduleRoundSubmissionGeneration() {
+  return process.env.FEED_IT_FORWARD_MOCK !== "1";
+}
 
 export const updateSettings = mutation({
   args: {
@@ -330,13 +373,20 @@ export const submitPrompt = mutation({
         originalScore: undefined,
         totalScore: undefined,
       });
-      await ctx.scheduler.runAfter(
-        0,
-        internal.feedItForwardNode.generateRoundSubmissionImage,
-        {
-          submissionId: existingSubmission._id,
-          generationNonce: nextNonce,
-        },
+      if (shouldScheduleRoundSubmissionGeneration()) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.feedItForwardNode.generateRoundSubmissionImage,
+          {
+            submissionId: existingSubmission._id,
+            generationNonce: nextNonce,
+          },
+        );
+      }
+      await maybeCapRoundDeadlineAfterSubmission(
+        ctx,
+        round._id,
+        session.playerOrderIds.length,
       );
 
       return {
@@ -364,13 +414,20 @@ export const submitPrompt = mutation({
       generationStatus: "Generating",
     });
 
-    await ctx.scheduler.runAfter(
-      0,
-      internal.feedItForwardNode.generateRoundSubmissionImage,
-      {
-        submissionId,
-        generationNonce: 1,
-      },
+    if (shouldScheduleRoundSubmissionGeneration()) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.feedItForwardNode.generateRoundSubmissionImage,
+        {
+          submissionId,
+          generationNonce: 1,
+        },
+      );
+    }
+    await maybeCapRoundDeadlineAfterSubmission(
+      ctx,
+      round._id,
+      session.playerOrderIds.length,
     );
 
     return {
