@@ -8,10 +8,11 @@ import {
 } from "../lib/auth";
 import {
   aiPersonalityTypeValidator,
+  DEFAULT_LOBBY_GAME,
   DEFAULT_TEXT_GAME_ROUND_COUNT,
+  DEPRECATED_IMAGE_GENERATION_GAME_NAME,
   generateFunnyUsername,
   lobbyGameValidator,
-  PLACEHOLDER_GAMES,
   sanitizeSummary,
   sanitizeUsername,
 } from "../lib/lobby";
@@ -45,7 +46,7 @@ export const createLobby = mutation({
     const lobbyId = await ctx.db.insert("lobbies", {
       joinCode: "PENDING",
       hostUserId: viewer._id,
-      selectedGame: args.selectedGame ?? PLACEHOLDER_GAMES[0],
+      selectedGame: args.selectedGame ?? DEFAULT_LOBBY_GAME,
       state: "Creation",
       textGameRoundCount: DEFAULT_TEXT_GAME_ROUND_COUNT,
       currentRound: 0,
@@ -67,8 +68,60 @@ export const createLobby = mutation({
       lobbyId,
       playerId,
       joinCode,
-      selectedGame: args.selectedGame ?? PLACEHOLDER_GAMES[0],
+      selectedGame: args.selectedGame ?? DEFAULT_LOBBY_GAME,
       state: "Creation" as const,
+    };
+  },
+});
+
+export const remapDeprecatedGameMode = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const [lobbies, votes, completions] = await Promise.all([
+      ctx.db.query("lobbies").collect(),
+      ctx.db.query("lobbyGameVotes").collect(),
+      ctx.db.query("lobbyCompletions").collect(),
+    ]);
+
+    const staleLobbies = lobbies.filter(
+      (lobby) =>
+        (lobby.selectedGame as string) ===
+        DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+    );
+    const staleVotes = votes.filter(
+      (vote) => (vote.game as string) === DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+    );
+    const staleCompletions = completions.filter(
+      (completion) =>
+        (completion.selectedGame as string) ===
+        DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+    );
+
+    await Promise.all([
+      ...staleLobbies.map((lobby) =>
+        ctx.db.patch(lobby._id, {
+          selectedGame: DEFAULT_LOBBY_GAME,
+          lastActivityAt: now,
+        }),
+      ),
+      ...staleVotes.map((vote) =>
+        ctx.db.patch(vote._id, {
+          game: DEFAULT_LOBBY_GAME,
+          updatedAt: now,
+        }),
+      ),
+      ...staleCompletions.map((completion) =>
+        ctx.db.patch(completion._id, {
+          selectedGame: DEFAULT_LOBBY_GAME,
+        }),
+      ),
+    ]);
+
+    return {
+      remappedLobbies: staleLobbies.length,
+      remappedVotes: staleVotes.length,
+      remappedCompletions: staleCompletions.length,
     };
   },
 });

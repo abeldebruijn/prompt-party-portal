@@ -5,6 +5,7 @@ export {
   joinLobbyByCode,
   kickPlayer,
   pokePlayer,
+  remapDeprecatedGameMode,
   resetLobby,
   selectGame,
   startRound,

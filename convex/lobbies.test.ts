@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { PLACEHOLDER_GAMES } from "./lib/lobby";
+import {
+  DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+  PLACEHOLDER_GAMES,
+} from "./lib/lobby";
 import { createConvexTest } from "./test.setup";
 
 type TestBackend = ReturnType<typeof createConvexTest>;
@@ -12,7 +15,7 @@ type ViewerFixture = {
   client: ViewerClient;
 };
 
-const [GAME_ONE, GAME_TWO, GAME_THREE] = PLACEHOLDER_GAMES;
+const [GAME_ONE, GAME_TWO] = PLACEHOLDER_GAMES;
 
 let nextUserSeed = 0;
 
@@ -64,6 +67,21 @@ async function createLobbyFixture(t: TestBackend) {
 }
 
 describe("convex/lobbies", () => {
+  it("lists only the supported game modes and defaults new lobbies to image mode", async () => {
+    const t = createConvexTest();
+    const host = await createViewer(t, {
+      name: "Host",
+      hasPasswordAccount: true,
+    });
+
+    const games = await host.client.query(api.lobbies.listAvailableGames, {});
+    const created = await host.client.mutation(api.lobbies.createLobby, {});
+
+    expect(games).toEqual(PLACEHOLDER_GAMES);
+    expect(games).not.toContain(DEPRECATED_IMAGE_GENERATION_GAME_NAME);
+    expect(created.selectedGame).toBe(GAME_ONE);
+  });
+
   it("covers the main lobby lifecycle and important side effects", async () => {
     const t = createConvexTest();
     const {
@@ -100,15 +118,15 @@ describe("convex/lobbies", () => {
     });
     const firstVote = await alice.client.mutation(api.lobbies.voteForGame, {
       lobbyId,
-      game: GAME_TWO,
+      game: GAME_ONE,
     });
     const updatedVote = await alice.client.mutation(api.lobbies.voteForGame, {
       lobbyId,
-      game: GAME_THREE,
+      game: GAME_TWO,
     });
     await bob.client.mutation(api.lobbies.voteForGame, {
       lobbyId,
-      game: GAME_TWO,
+      game: GAME_ONE,
     });
     const aiPlayer = await host.client.mutation(api.lobbies.addAiPlayer, {
       lobbyId,
@@ -118,14 +136,14 @@ describe("convex/lobbies", () => {
     });
     await host.client.mutation(api.lobbies.selectGame, {
       lobbyId,
-      game: GAME_TWO,
+      game: GAME_ONE,
     });
     await host.client.mutation(api.lobbies.kickPlayer, {
       lobbyId,
       playerId: bobJoin.playerId,
     });
 
-    expect(updatedVote).toEqual({ voteId: firstVote.voteId, game: GAME_THREE });
+    expect(updatedVote).toEqual({ voteId: firstVote.voteId, game: GAME_TWO });
     await expect(
       bob.client.query(api.lobbies.getLobby, { lobbyId }),
     ).rejects.toThrow("You must be an active player in this lobby.");
@@ -139,7 +157,7 @@ describe("convex/lobbies", () => {
 
     expect(creationSnapshot.lobby).toMatchObject({
       _id: lobbyId,
-      selectedGame: GAME_TWO,
+      selectedGame: GAME_ONE,
       state: "Creation",
       activePlayerCount: 3,
     });
@@ -149,11 +167,14 @@ describe("convex/lobbies", () => {
     expect(creationSnapshot.votes).toHaveLength(1);
     expect(creationSnapshot.votes[0]).toMatchObject({
       playerId: aliceJoin.playerId,
-      game: GAME_THREE,
+      game: GAME_TWO,
     });
     expect(
-      creationSnapshot.voteSummary.find((entry) => entry.game === GAME_THREE),
+      creationSnapshot.voteSummary.find((entry) => entry.game === GAME_TWO),
     ).toMatchObject({ count: 1 });
+    expect(
+      creationSnapshot.voteSummary.find((entry) => entry.game === GAME_ONE),
+    ).toMatchObject({ count: 0 });
 
     await host.client.mutation(api.lobbies.startRound, { lobbyId });
     await host.client.mutation(api.lobbies.pokePlayer, {
@@ -237,7 +258,7 @@ describe("convex/lobbies", () => {
     expect(completionSnapshot.completion).toMatchObject({
       _id: completion.completionId,
       completedByUserId: host.userId,
-      selectedGame: GAME_TWO,
+      selectedGame: GAME_ONE,
       summary: "Great finish",
     });
     expect(completionSnapshot.completion?.leaderboard).toEqual([
@@ -349,6 +370,97 @@ describe("convex/lobbies", () => {
       state: "Creation",
       activePlayerCount: 2,
     });
+  });
+
+  it("remaps deprecated stored game mode values to the image game", async () => {
+    const t = createConvexTest();
+    const {
+      host,
+      lobbyId,
+      playerId: hostPlayerId,
+      joinCode,
+    } = await createLobbyFixture(t);
+    const member = await createViewer(t, { name: "Member" });
+    const join = await member.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+
+    await member.client.mutation(api.lobbies.voteForGame, {
+      lobbyId,
+      game: GAME_TWO,
+    });
+    await host.client.mutation(api.lobbies.startRound, { lobbyId });
+    await host.client.mutation(api.lobbies.completeLobby, {
+      lobbyId,
+      leaderboard: [
+        {
+          playerId: hostPlayerId,
+          displayName: "Host Person",
+          rank: 1,
+          score: 10,
+        },
+        {
+          playerId: join.playerId,
+          displayName: "Member",
+          rank: 2,
+          score: 5,
+        },
+      ],
+    });
+
+    await t.run(async (ctx) => {
+      const completion = await ctx.db
+        .query("lobbyCompletions")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
+        .unique();
+      const vote = await ctx.db
+        .query("lobbyGameVotes")
+        .withIndex("lobbyIdAndPlayerId", (query) =>
+          query.eq("lobbyId", lobbyId).eq("playerId", join.playerId),
+        )
+        .unique();
+
+      await ctx.db.patch(lobbyId, {
+        selectedGame: DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+      });
+      await ctx.db.patch(vote._id, {
+        game: DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+      });
+      await ctx.db.patch(completion._id, {
+        selectedGame: DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+      });
+    });
+
+    const result = await host.client.mutation(
+      api.lobbies.remapDeprecatedGameMode,
+      {},
+    );
+    const snapshot = await host.client.query(api.lobbies.getLobby, { lobbyId });
+    const dbState = await t.run(async (ctx) => {
+      const lobby = await ctx.db.get(lobbyId);
+      const vote = await ctx.db
+        .query("lobbyGameVotes")
+        .withIndex("lobbyIdAndPlayerId", (query) =>
+          query.eq("lobbyId", lobbyId).eq("playerId", join.playerId),
+        )
+        .unique();
+      const completion = await ctx.db
+        .query("lobbyCompletions")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
+        .unique();
+
+      return { completion, lobby, vote };
+    });
+
+    expect(result).toEqual({
+      remappedLobbies: 1,
+      remappedVotes: 1,
+      remappedCompletions: 1,
+    });
+    expect(snapshot.lobby.selectedGame).toBe(GAME_ONE);
+    expect(dbState.lobby?.selectedGame).toBe(GAME_ONE);
+    expect(dbState.vote?.game).toBe(GAME_ONE);
+    expect(dbState.completion?.selectedGame).toBe(GAME_ONE);
   });
 
   it("requires auth and a password-backed non-anonymous host to create lobbies", async () => {
