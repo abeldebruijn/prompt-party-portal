@@ -32,6 +32,10 @@ const PROMPTS = [
 
 type TestBackend = ReturnType<typeof createConvexTest>;
 type TestClient = ReturnType<TestBackend["withIdentity"]>;
+type ImageGameState = Awaited<ReturnType<TestClient["query"]>>;
+type ImageGameProgressEntry = NonNullable<
+  NonNullable<NonNullable<ImageGameState>["round"]>["progress"]
+>[number];
 
 let nextUserSeed = 0;
 
@@ -314,10 +318,10 @@ describe("convex/imageGame", () => {
       lobbyId,
     });
     const pendingPlayer = initialState.round?.progress.find(
-      (entry) => entry.state === "Pending",
+      (entry: ImageGameProgressEntry) => entry.state === "Pending",
     );
     const judgePlayer = initialState.round?.progress.find(
-      (entry) => entry.state === "Target",
+      (entry: ImageGameProgressEntry) => entry.state === "Target",
     );
 
     expect(pendingPlayer).toBeTruthy();
@@ -356,7 +360,8 @@ describe("convex/imageGame", () => {
       lobbyId,
     });
     const pokedEntry = pokedState.round?.progress.find(
-      (entry) => entry.playerId === pendingPlayer?.playerId,
+      (entry: ImageGameProgressEntry) =>
+        entry.playerId === pendingPlayer?.playerId,
     );
 
     expect(pokedEntry?.lastPoke).toEqual(
@@ -553,7 +558,7 @@ describe("convex/imageGame", () => {
       lobbyId,
     });
     const pendingPlayer = generateState.round?.progress.find(
-      (entry) => entry.state === "Pending",
+      (entry: ImageGameProgressEntry) => entry.state === "Pending",
     );
     const targetPlayerId = generateState.round?.targetPlayer?.playerId;
     const clientByPlayerId = new Map<string, typeof host.client>([
@@ -572,7 +577,11 @@ describe("convex/imageGame", () => {
     expect(submittingClient).toBeTruthy();
     expect(judgingClient).toBeTruthy();
 
-    await submitPromptAsGeneratedImage(t, submittingClient!, {
+    if (submittingClient === undefined || judgingClient === undefined) {
+      throw new Error("Expected clients to be defined.");
+    }
+
+    await submitPromptAsGeneratedImage(t, submittingClient, {
       lobbyId,
       prompt: "Partial image submission survives host skip",
     });
@@ -588,7 +597,7 @@ describe("convex/imageGame", () => {
       api.imageGame.advanceToJudge,
       { lobbyId },
     );
-    const judgeState = await judgingClient!.query(api.imageGame.getGameState, {
+    const judgeState = await judgingClient.query(api.imageGame.getGameState, {
       lobbyId,
     });
 
@@ -658,7 +667,8 @@ describe("convex/imageGame", () => {
     expect(secondRound.round?.expectedSubmissionCount).toBe(2);
     expect(
       secondRound.round?.progress.some(
-        (entry) => entry.displayName === "Bob" && entry.state === "Pending",
+        (entry: ImageGameProgressEntry) =>
+          entry.displayName === "Bob" && entry.state === "Pending",
       ),
     ).toBe(true);
 

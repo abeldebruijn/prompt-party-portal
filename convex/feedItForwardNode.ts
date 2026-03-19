@@ -97,7 +97,7 @@ async function generatePromptParts() {
   }
 
   const { output } = await generateText({
-    model: gatewayProvider.languageModel(FEED_IT_FORWARD_TEXT_MODEL),
+    model: FEED_IT_FORWARD_TEXT_MODEL,
     output: Output.object({
       schema: setupPromptPartsSchema,
     }),
@@ -123,7 +123,7 @@ async function generatePromptImage(prompt: string) {
   }
 
   const result = await generateImage({
-    model: gatewayProvider.image(FEED_IT_FORWARD_IMAGE_MODEL),
+    model: FEED_IT_FORWARD_IMAGE_MODEL,
     prompt,
     size: "512x512",
   });
@@ -173,7 +173,7 @@ type SetupImageArgs = {
 const generateSetupImageHandler = async (
   ctx: ActionCtx,
   args: SetupImageArgs,
-) => {
+): Promise<{ storageId: Id<"_storage">; updatedAt: number }> => {
   const membership = (await ctx.runQuery(
     internal.feedItForwardInternal.getSetupSlotPayload,
     {

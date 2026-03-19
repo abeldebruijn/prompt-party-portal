@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { api } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   DEPRECATED_IMAGE_GENERATION_GAME_NAME,
   PLACEHOLDER_GAMES,
@@ -10,6 +10,7 @@ import { createConvexTest } from "./test.setup";
 
 type TestBackend = ReturnType<typeof createConvexTest>;
 type ViewerClient = ReturnType<TestBackend["withIdentity"]>;
+type LobbySnapshot = Awaited<ReturnType<ViewerClient["query"]>>;
 type ViewerFixture = {
   userId: Id<"users">;
   client: ViewerClient;
@@ -162,7 +163,9 @@ describe("convex/lobbies", () => {
       activePlayerCount: 3,
     });
     expect(
-      creationSnapshot.players.map((player) => player.displayName),
+      creationSnapshot.players.map(
+        (player: LobbySnapshot["players"][number]) => player.displayName,
+      ),
     ).toEqual(["Host Person", "Alice Example", "Bot Prime"]);
     expect(creationSnapshot.votes).toHaveLength(1);
     expect(creationSnapshot.votes[0]).toMatchObject({
@@ -170,10 +173,16 @@ describe("convex/lobbies", () => {
       game: GAME_TWO,
     });
     expect(
-      creationSnapshot.voteSummary.find((entry) => entry.game === GAME_TWO),
+      creationSnapshot.voteSummary.find(
+        (entry: LobbySnapshot["voteSummary"][number]) =>
+          entry.game === GAME_TWO,
+      ),
     ).toMatchObject({ count: 1 });
     expect(
-      creationSnapshot.voteSummary.find((entry) => entry.game === GAME_ONE),
+      creationSnapshot.voteSummary.find(
+        (entry: LobbySnapshot["voteSummary"][number]) =>
+          entry.game === GAME_ONE,
+      ),
     ).toMatchObject({ count: 0 });
 
     await host.client.mutation(api.lobbies.startRound, { lobbyId });
@@ -233,7 +242,7 @@ describe("convex/lobbies", () => {
       lobbyId,
     });
     const dbStateAfterCompletion = await t.run(async (ctx) => {
-      const lobby = await ctx.db.get(lobbyId);
+      const lobby = (await ctx.db.get(lobbyId)) as Doc<"lobbies"> | null;
       const pokes = await ctx.db
         .query("playerPokes")
         .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
@@ -423,6 +432,9 @@ describe("convex/lobbies", () => {
       await ctx.db.patch(lobbyId, {
         selectedGame: DEPRECATED_IMAGE_GENERATION_GAME_NAME,
       });
+      if (vote === null || completion === null) {
+        throw new Error("Expected deprecated records to exist.");
+      }
       await ctx.db.patch(vote._id, {
         game: DEPRECATED_IMAGE_GENERATION_GAME_NAME,
       });
@@ -438,16 +450,16 @@ describe("convex/lobbies", () => {
     const snapshot = await host.client.query(api.lobbies.getLobby, { lobbyId });
     const dbState = await t.run(async (ctx) => {
       const lobby = await ctx.db.get(lobbyId);
-      const vote = await ctx.db
+      const vote = (await ctx.db
         .query("lobbyGameVotes")
         .withIndex("lobbyIdAndPlayerId", (query) =>
           query.eq("lobbyId", lobbyId).eq("playerId", join.playerId),
         )
-        .unique();
-      const completion = await ctx.db
+        .unique()) as Doc<"lobbyGameVotes"> | null;
+      const completion = (await ctx.db
         .query("lobbyCompletions")
         .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
-        .unique();
+        .unique()) as Doc<"lobbyCompletions"> | null;
 
       return { completion, lobby, vote };
     });

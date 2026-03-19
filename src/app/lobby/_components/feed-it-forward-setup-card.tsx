@@ -12,7 +12,7 @@ import { LobbyInput } from "./lobby-ui";
 
 type SetupSnapshot = FunctionReturnType<typeof api.feedItForward.getSetupState>;
 type SetupPromptParts = FunctionReturnType<
-  typeof api.feedItForwardNode.generateSetupPrompt
+  typeof api.feedItForward.generateSetupPrompt
 >["promptParts"];
 
 function createEmptyPromptParts(): SetupPromptParts {
@@ -58,12 +58,8 @@ export function FeedItForwardSetupCard({
 }) {
   const snapshot = useQuery(api.feedItForward.getSetupState, { lobbyId });
   const updateSettings = useMutation(api.feedItForward.updateSettings);
-  const generateSetupPrompt = useAction(
-    api.feedItForwardNode.generateSetupPrompt,
-  );
-  const generateSetupImage = useAction(
-    api.feedItForwardNode.generateSetupImage,
-  );
+  const generateSetupPrompt = useAction(api.feedItForward.generateSetupPrompt);
+  const generateSetupImage = useAction(api.feedItForward.generateSetupImage);
 
   if (snapshot === undefined) {
     return (
@@ -360,7 +356,7 @@ function SetupSlotCard({
               <LobbyInput
                 id={`fitf-detail3-${slot.slotIndex}`}
                 onChange={(event) =>
-                  setPromptParts((current) => ({
+                  setPromptParts((current: SetupPromptParts) => ({
                     ...current,
                     detail3: event.target.value,
                   }))

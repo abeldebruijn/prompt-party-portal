@@ -24,5 +24,4 @@ Guidelines
 export const FEED_IT_FORWARD_IMAGE_MODEL: ImageModel =
   "prodia/flux-fast-schnell";
 export const FEED_IT_FORWARD_TEXT_MODEL: LanguageModel = "openai/gpt-oss-120b";
-export const FEED_IT_FORWARD_EMBEDDING_MODEL: LanguageModel =
-  "openai/text-embedding-3-small";
+export const FEED_IT_FORWARD_EMBEDDING_MODEL = "openai/text-embedding-3-small";

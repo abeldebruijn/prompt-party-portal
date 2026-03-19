@@ -33,7 +33,11 @@ type LobbySnapshot = FunctionReturnType<typeof api.lobbies.getLobby>;
 type LobbyPlayer = LobbySnapshot["players"][number];
 type LobbyViewer = NonNullable<LobbySnapshot["viewer"]>;
 type LobbyVoteSummary = LobbySnapshot["voteSummary"][number];
-type LobbyGame = LobbySnapshot["lobby"]["selectedGame"];
+type LobbyGame = LobbyVoteSummary["game"];
+type LobbySelectedGame = LobbySnapshot["lobby"]["selectedGame"];
+type CompletionLeaderboardEntry = NonNullable<
+  NonNullable<LobbySnapshot["completion"]>["leaderboard"]
+>[number];
 type AiPersonality = (typeof AI_PERSONALITY_OPTIONS)[number]["value"];
 
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
@@ -124,7 +128,7 @@ function PlayerList({
 }) {
   return (
     <div className="space-y-2">
-      {players.map((player) => {
+      {players.map((player: LobbyPlayer) => {
         const isViewer = player._id === viewerPlayerId;
 
         return (
@@ -206,9 +210,9 @@ function GameVoteGrid({
 }: {
   isHost: boolean;
   pendingAction: string | null;
-  selectedGame: LobbyGame;
+  selectedGame: LobbySelectedGame;
   voteSummary: LobbyVoteSummary[];
-  viewerVote?: LobbyGame;
+  viewerVote?: LobbySelectedGame;
   onSelectGame: (game: LobbyGame) => Promise<void>;
   onVote: (game: LobbyGame) => Promise<void>;
 }) {
@@ -322,7 +326,7 @@ export default function LobbyRoomPage() {
 
     return (
       snapshot.players.find(
-        (player) => player._id === snapshot.viewer?.playerId,
+        (player: LobbyPlayer) => player._id === snapshot.viewer?.playerId,
       ) ?? null
     );
   }, [snapshot]);
@@ -333,7 +337,8 @@ export default function LobbyRoomPage() {
     }
 
     return snapshot.votes.find(
-      (vote) => vote.playerId === snapshot.viewer?.playerId,
+      (vote: LobbySnapshot["votes"][number]) =>
+        vote.playerId === snapshot.viewer?.playerId,
     )?.game;
   }, [snapshot]);
 
@@ -809,32 +814,34 @@ export default function LobbyRoomPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
-                  {snapshot.completion.leaderboard.map((entry) => (
-                    <div
-                      key={`${entry.rank}-${entry.displayName}`}
-                      className={cn(
-                        "rounded-3xl border bg-background/75 p-5",
-                        entry.rank === 1
-                          ? "border-primary/30 shadow-lg shadow-primary/10"
-                          : "border-foreground/10",
-                      )}
-                    >
-                      <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
-                        Place #{entry.rank}
-                      </p>
-                      <h3 className="mt-3 text-xl font-semibold text-foreground">
-                        {entry.displayName}
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-foreground/70">
-                        Score: {entry.score}
-                      </p>
-                      {entry.note ? (
-                        <p className="mt-2 text-sm leading-6 text-foreground/65">
-                          {entry.note}
+                  {snapshot.completion.leaderboard.map(
+                    (entry: CompletionLeaderboardEntry) => (
+                      <div
+                        key={`${entry.rank}-${entry.displayName}`}
+                        className={cn(
+                          "rounded-3xl border bg-background/75 p-5",
+                          entry.rank === 1
+                            ? "border-primary/30 shadow-lg shadow-primary/10"
+                            : "border-foreground/10",
+                        )}
+                      >
+                        <p className="font-mono text-[0.7rem] tracking-[0.22em] text-foreground/60 uppercase">
+                          Place #{entry.rank}
                         </p>
-                      ) : null}
-                    </div>
-                  ))}
+                        <h3 className="mt-3 text-xl font-semibold text-foreground">
+                          {entry.displayName}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-foreground/70">
+                          Score: {entry.score}
+                        </p>
+                        {entry.note ? (
+                          <p className="mt-2 text-sm leading-6 text-foreground/65">
+                            {entry.note}
+                          </p>
+                        ) : null}
+                      </div>
+                    ),
+                  )}
                 </div>
 
                 {isHost ? (

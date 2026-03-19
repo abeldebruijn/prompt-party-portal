@@ -29,6 +29,11 @@ const PROMPTS = [
 ] as const;
 
 type TestBackend = ReturnType<typeof createConvexTest>;
+type TestClient = ReturnType<TestBackend["withIdentity"]>;
+type TextGameState = Awaited<ReturnType<TestClient["query"]>>;
+type TextGameProgressEntry = NonNullable<
+  NonNullable<NonNullable<TextGameState>["round"]>["progress"]
+>[number];
 
 let nextUserSeed = 0;
 
@@ -236,7 +241,7 @@ describe("convex/textGame", () => {
       lobbyId,
     });
     const pendingPlayer = initialState.round?.progress.find(
-      (entry) => entry.state === "Pending",
+      (entry: TextGameProgressEntry) => entry.state === "Pending",
     );
 
     expect(pendingPlayer).toBeTruthy();
@@ -264,7 +269,8 @@ describe("convex/textGame", () => {
       lobbyId,
     });
     const pokedEntry = pokedState.round?.progress.find(
-      (entry) => entry.playerId === pendingPlayer?.playerId,
+      (entry: TextGameProgressEntry) =>
+        entry.playerId === pendingPlayer?.playerId,
     );
 
     expect(pokedEntry?.lastPoke).toEqual(
@@ -344,7 +350,7 @@ describe("convex/textGame", () => {
       lobbyId,
     });
     const pendingPlayer = generateState.round?.progress.find(
-      (entry) => entry.state === "Pending",
+      (entry: TextGameProgressEntry) => entry.state === "Pending",
     );
     const targetPlayerId = generateState.round?.targetPlayer?.playerId;
     const clientByPlayerId = new Map<string, typeof host.client>([
@@ -363,7 +369,14 @@ describe("convex/textGame", () => {
     expect(submittingClient).toBeTruthy();
     expect(judgingClient).toBeTruthy();
 
-    await submittingClient!.mutation(api.textGame.submitAnswer, {
+    if (!submittingClient) {
+      throw new Error("submittingClient is not defined");
+    }
+    if (!judgingClient) {
+      throw new Error("judgingClient is not defined");
+    }
+
+    await submittingClient.mutation(api.textGame.submitAnswer, {
       lobbyId,
       answer: "Partial submission survives host skip",
     });
@@ -378,7 +391,7 @@ describe("convex/textGame", () => {
     const transition = await host.client.mutation(api.textGame.advanceToJudge, {
       lobbyId,
     });
-    const judgeState = await judgingClient!.query(api.textGame.getGameState, {
+    const judgeState = await judgingClient.query(api.textGame.getGameState, {
       lobbyId,
     });
 
@@ -441,7 +454,8 @@ describe("convex/textGame", () => {
     expect(secondRound.round?.expectedSubmissionCount).toBe(2);
     expect(
       secondRound.round?.progress.some(
-        (entry) => entry.displayName === "Bob" && entry.state === "Pending",
+        (entry: TextGameProgressEntry) =>
+          entry.displayName === "Bob" && entry.state === "Pending",
       ),
     ).toBe(true);
 
