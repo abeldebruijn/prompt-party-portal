@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { FEED_IT_FORWARD_GAME_NAME } from "./lib/lobby";
 import { createConvexTest } from "./test.setup";
@@ -52,6 +52,12 @@ async function storeTestImage(t: TestBackend): Promise<Id<"_storage">> {
   });
 }
 
+function requireValue<T>(value: T | null | undefined, label: string): T {
+  expect(value, `${label} should exist`).not.toBeNull();
+  expect(value, `${label} should exist`).not.toBeUndefined();
+  return value as T;
+}
+
 async function createFeedLobby(t: TestBackend) {
   const host = await createViewer(t, {
     name: "Host Person",
@@ -100,6 +106,10 @@ async function seedFinalizedSetupSlot(
 }
 
 describe("convex/feedItForward", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("stores settings and starts from finalized setup slots", async () => {
     const t = createConvexTest();
     const {
@@ -156,5 +166,313 @@ describe("convex/feedItForward", () => {
     expect(snapshot.session?.status).toBe("Playing");
     expect(snapshot.round?.roundNumber).toBe(1);
     expect(snapshot.round?.sourceImageUrl).toBeTruthy();
+  });
+
+  it("waits at least 15 seconds before advancing when images are ready at deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-19T10:00:00.000Z"));
+
+    const t = createConvexTest();
+    const {
+      host,
+      lobbyId,
+      joinCode,
+      playerId: hostPlayerId,
+    } = await createFeedLobby(t);
+    const member = await createViewer(t, { name: "Alice Example" });
+    const joined = await member.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+
+    await host.client.mutation(api.feedItForward.updateSettings, {
+      lobbyId,
+      setupPromptCount: 2,
+      roundDurationSeconds: 45,
+    });
+
+    for (const [playerId, slotIndex, prompt] of [
+      [hostPlayerId, 0, "A moon fox conducts a choir of glowing umbrellas."],
+      [hostPlayerId, 1, "A velvet whale paints rainbows in a teacup storm."],
+      [joined.playerId, 0, "A brass owl surfs across a pancake eclipse."],
+      [
+        joined.playerId,
+        1,
+        "A sapphire bear tends a garden of floating violins.",
+      ],
+    ] as const) {
+      await seedFinalizedSetupSlot(t, {
+        lobbyId,
+        playerId,
+        slotIndex,
+        prompt,
+      });
+    }
+
+    await host.client.mutation(api.feedItForward.startGame, { lobbyId });
+
+    const beforeDeadline = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    const firstRound = requireValue(beforeDeadline.round, "first round");
+
+    await t.mutation(internal.feedItForwardInternal.handleRoundDeadline, {
+      roundId: firstRound._id,
+    });
+
+    const waitingState = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+
+    expect(waitingState.session?.status).toBe("WaitingForImages");
+    expect(waitingState.round?.status).toBe("WaitingForImages");
+    expect(waitingState.waiting?.pendingImageCount).toBe(0);
+    expect(waitingState.waiting?.remainingWaitSeconds).toBe(15);
+
+    vi.advanceTimersByTime(14_000);
+    vi.setSystemTime(Date.now());
+    await t.mutation(internal.feedItForwardInternal.handleRoundWaitElapsed, {
+      roundId: firstRound._id,
+    });
+
+    const stillWaiting = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    expect(stillWaiting.session?.status).toBe("WaitingForImages");
+    expect(stillWaiting.round?.roundNumber).toBe(1);
+
+    vi.advanceTimersByTime(1_000);
+    vi.setSystemTime(Date.now());
+    await t.mutation(internal.feedItForwardInternal.handleRoundWaitElapsed, {
+      roundId: firstRound._id,
+    });
+
+    const nextRound = await host.client.query(api.feedItForward.getGameState, {
+      lobbyId,
+    });
+    expect(nextRound.session?.status).toBe("Playing");
+    expect(nextRound.round?.roundNumber).toBe(2);
+  });
+
+  it("waits for both the timer and locked images before advancing", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-19T11:00:00.000Z"));
+
+    const t = createConvexTest();
+    const {
+      host,
+      lobbyId,
+      joinCode,
+      playerId: hostPlayerId,
+    } = await createFeedLobby(t);
+    const member = await createViewer(t, { name: "Alice Example" });
+    const joined = await member.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+
+    await host.client.mutation(api.feedItForward.updateSettings, {
+      lobbyId,
+      setupPromptCount: 2,
+      roundDurationSeconds: 45,
+    });
+
+    for (const [playerId, slotIndex, prompt] of [
+      [hostPlayerId, 0, "A moon fox conducts a choir of glowing umbrellas."],
+      [hostPlayerId, 1, "A velvet whale paints rainbows in a teacup storm."],
+      [joined.playerId, 0, "A brass owl surfs across a pancake eclipse."],
+      [
+        joined.playerId,
+        1,
+        "A sapphire bear tends a garden of floating violins.",
+      ],
+    ] as const) {
+      await seedFinalizedSetupSlot(t, {
+        lobbyId,
+        playerId,
+        slotIndex,
+        prompt,
+      });
+    }
+
+    await host.client.mutation(api.feedItForward.startGame, { lobbyId });
+    const started = await host.client.query(api.feedItForward.getGameState, {
+      lobbyId,
+    });
+    const startedRound = requireValue(started.round, "started round");
+
+    const pendingImageStorageId = await storeTestImage(t);
+    const readyImageStorageId = await storeTestImage(t);
+
+    await t.run(async (ctx) => {
+      const session = await ctx.db
+        .query("feedItForwardSessions")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
+        .unique();
+      const sessionRecord = requireValue(session, "session");
+      const memberChain = await ctx.db
+        .query("feedItForwardChains")
+        .withIndex("sessionIdAndOwnerPlayerIdAndSlotIndex", (query) =>
+          query
+            .eq("sessionId", sessionRecord._id)
+            .eq("ownerPlayerId", joined.playerId)
+            .eq("slotIndex", 0),
+        )
+        .unique();
+      const chainRecord = requireValue(memberChain, "member chain");
+      const previousSourceKey = requireValue(
+        chainRecord.currentSourceKey,
+        "previous source key",
+      );
+      const previousStepNumber = requireValue(
+        chainRecord.currentStepNumber,
+        "previous step number",
+      );
+
+      await ctx.db.insert("feedItForwardSubmissions", {
+        sessionId: sessionRecord._id,
+        roundId: startedRound._id,
+        lobbyId,
+        roundNumber: 1,
+        authorPlayerId: hostPlayerId,
+        ownerPlayerId: joined.playerId,
+        slotIndex: 0,
+        sourceKey: `submission:${startedRound._id}:${hostPlayerId}`,
+        previousSourceKey,
+        originalSourceKey: chainRecord.originalSourceKey,
+        previousStepNumber,
+        prompt: "A pending prompt about moonlit umbrellas.",
+        submittedAt: Date.now() - 1000,
+        latestGenerationNonce: 1,
+        generationStatus: "Generating",
+        imageStorageId: pendingImageStorageId,
+        imageMediaType: "image/png",
+      });
+    });
+
+    await t.mutation(internal.feedItForwardInternal.handleRoundDeadline, {
+      roundId: startedRound._id,
+    });
+
+    const waitingState = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    expect(waitingState.waiting?.pendingImageCount).toBe(1);
+    expect(waitingState.waiting?.remainingWaitSeconds).toBe(15);
+
+    vi.advanceTimersByTime(15_000);
+    vi.setSystemTime(Date.now());
+    await t.mutation(internal.feedItForwardInternal.handleRoundWaitElapsed, {
+      roundId: startedRound._id,
+    });
+
+    const stillWaiting = await host.client.query(
+      api.feedItForward.getGameState,
+      {
+        lobbyId,
+      },
+    );
+    expect(stillWaiting.session?.status).toBe("WaitingForImages");
+    expect(stillWaiting.round?.roundNumber).toBe(1);
+
+    await t.run(async (ctx) => {
+      const submission = await ctx.db
+        .query("feedItForwardSubmissions")
+        .withIndex("roundId", (query) => query.eq("roundId", startedRound._id))
+        .unique();
+
+      expect(submission).toBeTruthy();
+    });
+
+    const pendingSubmissionId = await t.run(async (ctx) => {
+      const submission = await ctx.db
+        .query("feedItForwardSubmissions")
+        .withIndex("roundId", (query) => query.eq("roundId", startedRound._id))
+        .unique();
+      return requireValue(submission, "pending submission")._id;
+    });
+
+    await t.mutation(internal.feedItForwardInternal.finalizeRoundSubmission, {
+      submissionId: pendingSubmissionId,
+      generationNonce: 1,
+      promptEmbedding: Array.from({ length: 1536 }, (_, index) =>
+        index % 5 === 0 ? 0.2 : 0,
+      ),
+      imageStorageId: readyImageStorageId,
+      imageMediaType: "image/png",
+      previousSimilarity: 0.5,
+      originalSimilarity: 0.3,
+      previousScore: 4,
+      originalScore: 3,
+    });
+
+    const advanced = await host.client.query(api.feedItForward.getGameState, {
+      lobbyId,
+    });
+    expect(advanced.session?.status).toBe("Playing");
+    expect(advanced.round?.roundNumber).toBe(2);
+  });
+
+  it("does not delay final completion after the last round", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-19T12:00:00.000Z"));
+
+    const t = createConvexTest();
+    const {
+      host,
+      lobbyId,
+      joinCode,
+      playerId: hostPlayerId,
+    } = await createFeedLobby(t);
+    const member = await createViewer(t, { name: "Alice Example" });
+    const joined = await member.client.mutation(api.lobbies.joinLobbyByCode, {
+      joinCode,
+    });
+
+    await host.client.mutation(api.feedItForward.updateSettings, {
+      lobbyId,
+      setupPromptCount: 1,
+      roundDurationSeconds: 45,
+    });
+
+    await seedFinalizedSetupSlot(t, {
+      lobbyId,
+      playerId: hostPlayerId,
+      slotIndex: 0,
+      prompt: "A moon fox conducts a choir of glowing umbrellas.",
+    });
+    await seedFinalizedSetupSlot(t, {
+      lobbyId,
+      playerId: joined.playerId,
+      slotIndex: 0,
+      prompt: "A brass owl surfs across a pancake eclipse.",
+    });
+
+    await host.client.mutation(api.feedItForward.startGame, { lobbyId });
+    const started = await host.client.query(api.feedItForward.getGameState, {
+      lobbyId,
+    });
+    const finalRound = requireValue(started.round, "final round");
+
+    await t.mutation(internal.feedItForwardInternal.handleRoundDeadline, {
+      roundId: finalRound._id,
+    });
+
+    const completed = await host.client.query(api.feedItForward.getGameState, {
+      lobbyId,
+    });
+    expect(completed.session?.status).toBe("Completed");
+    expect(completed.completion).toBeTruthy();
+    expect(completed.waiting).toBeNull();
   });
 });

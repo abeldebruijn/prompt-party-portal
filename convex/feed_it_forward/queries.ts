@@ -276,6 +276,11 @@ export const getGameState = query({
               submission.lockedAt !== undefined &&
               submission.generationStatus === "Generating",
           ).length;
+    const waitEndsAt = round?.waitEndsAt ?? null;
+    const remainingWaitSeconds =
+      waitEndsAt === null
+        ? 0
+        : Math.max(0, Math.ceil((waitEndsAt - Date.now()) / 1000));
 
     return {
       lobby: membership.lobby,
@@ -327,6 +332,8 @@ export const getGameState = query({
         session.status === "WaitingForImages"
           ? {
               pendingImageCount,
+              waitEndsAt,
+              remainingWaitSeconds,
             }
           : null,
       leaderboard,

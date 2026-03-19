@@ -91,6 +91,11 @@ export default function FeedItForwardGamePage() {
     snapshot.round === null
       ? 0
       : Math.max(0, Math.ceil((snapshot.round.endsAt - now) / 1000));
+  const waitingCountdownSeconds =
+    snapshot.waiting?.waitEndsAt === null ||
+    snapshot.waiting?.waitEndsAt === undefined
+      ? (snapshot.waiting?.remainingWaitSeconds ?? 0)
+      : Math.max(0, Math.ceil((snapshot.waiting.waitEndsAt - now) / 1000));
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-10 sm:px-6 lg:px-8">
@@ -142,7 +147,8 @@ export default function FeedItForwardGamePage() {
               ) : null}
 
               {snapshot.viewer.role === "Participant" &&
-              snapshot.round.status === "Playing" ? (
+              snapshot.round.status === "Playing" &&
+              !snapshot.waiting ? (
                 <form
                   className="mt-6 space-y-4"
                   onSubmit={(event) => {
@@ -208,9 +214,21 @@ export default function FeedItForwardGamePage() {
               <SurfaceCardTitle className="text-2xl">
                 Waiting for the next image batch
               </SurfaceCardTitle>
-              <p className="mt-4 text-base leading-7 text-foreground/80">
-                {snapshot.waiting.pendingImageCount} images are still being
-                generated for the next round.
+              {snapshot.waiting.pendingImageCount > 0 ? (
+                <p className="mt-4 text-base leading-7 text-foreground/80">
+                  {snapshot.waiting.pendingImageCount} images are still being
+                  generated for the next round.
+                </p>
+              ) : (
+                <p className="mt-4 text-base leading-7 text-foreground/80">
+                  All images are ready. The next round starts shortly.
+                </p>
+              )}
+              <p className="mt-3 font-mono text-3xl text-foreground">
+                {waitingCountdownSeconds}s
+              </p>
+              <p className="mt-2 text-sm text-foreground/65">
+                Next round starts in {waitingCountdownSeconds}s
               </p>
             </SurfaceCard>
           ) : null}

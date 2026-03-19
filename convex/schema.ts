@@ -321,6 +321,7 @@ const schema = defineSchema({
     startedAt: v.number(),
     endsAt: v.number(),
     waitingStartedAt: v.optional(v.number()),
+    waitEndsAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
   })
     .index("sessionId", ["sessionId"])

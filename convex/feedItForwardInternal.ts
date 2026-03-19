@@ -7,6 +7,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import { FEED_IT_FORWARD_MINIMUM_INTER_ROUND_WAIT_MS } from "./feed_it_forward/constants";
 import {
   computeLeaderboard,
   deriveSessionSummary,
@@ -16,6 +17,56 @@ import {
   listSessionChains,
   requireFeedItForwardMembership,
 } from "./feed_it_forward/helpers";
+
+function countLockedPendingImages(
+  submissions: Awaited<ReturnType<typeof listRoundSubmissions>>,
+) {
+  return submissions.filter(
+    (submission) =>
+      submission.lockedAt !== undefined &&
+      submission.generationStatus === "Generating",
+  ).length;
+}
+
+function hasMinimumWaitElapsed(round: Doc<"feedItForwardRounds">, now: number) {
+  return round.waitEndsAt === undefined || now >= round.waitEndsAt;
+}
+
+async function startNextRound(
+  ctx: MutationCtx,
+  session: Doc<"feedItForwardSessions">,
+  nextRoundNumber: number,
+) {
+  const roundsPerSlot = Math.max(session.playerOrderIds.length - 1, 1);
+  const nextSlotIndex = Math.floor((nextRoundNumber - 1) / roundsPerSlot);
+  const nextHopNumber = ((nextRoundNumber - 1) % roundsPerSlot) + 1;
+  const now = Date.now();
+  const endsAt = now + session.roundDurationSeconds * 1000;
+  const nextRoundId = await ctx.db.insert("feedItForwardRounds", {
+    sessionId: session._id,
+    lobbyId: session.lobbyId,
+    roundNumber: nextRoundNumber,
+    slotIndex: nextSlotIndex,
+    hopNumber: nextHopNumber,
+    status: "Playing",
+    startedAt: now,
+    endsAt,
+  });
+
+  await ctx.db.patch(session._id, {
+    currentRoundNumber: nextRoundNumber,
+    status: "Playing",
+  });
+  await ctx.db.patch(session.lobbyId, {
+    currentRound: nextRoundNumber,
+    lastActivityAt: now,
+  });
+  await ctx.scheduler.runAt(
+    endsAt,
+    internal.feedItForwardInternal.handleRoundDeadline,
+    { roundId: nextRoundId },
+  );
+}
 
 async function upsertStepZeroFromSetupSlot(
   ctx: MutationCtx,
@@ -133,13 +184,10 @@ async function maybeAdvanceAfterWaiting(
   }
 
   const submissions = await listRoundSubmissions(ctx, round._id);
-  const lockedPending = submissions.filter(
-    (submission) =>
-      submission.lockedAt !== undefined &&
-      submission.generationStatus === "Generating",
-  );
+  const lockedPendingCount = countLockedPendingImages(submissions);
+  const now = Date.now();
 
-  if (lockedPending.length > 0) {
+  if (lockedPendingCount > 0 || !hasMinimumWaitElapsed(round, now)) {
     return;
   }
 
@@ -246,35 +294,7 @@ async function applyRoundOutcome(
     return;
   }
 
-  const nextRoundNumber = round.roundNumber + 1;
-  const roundsPerSlot = Math.max(session.playerOrderIds.length - 1, 1);
-  const nextSlotIndex = Math.floor((nextRoundNumber - 1) / roundsPerSlot);
-  const nextHopNumber = ((nextRoundNumber - 1) % roundsPerSlot) + 1;
-  const endsAt = now + session.roundDurationSeconds * 1000;
-  const nextRoundId = await ctx.db.insert("feedItForwardRounds", {
-    sessionId: session._id,
-    lobbyId: session.lobbyId,
-    roundNumber: nextRoundNumber,
-    slotIndex: nextSlotIndex,
-    hopNumber: nextHopNumber,
-    status: "Playing",
-    startedAt: now,
-    endsAt,
-  });
-
-  await ctx.db.patch(session._id, {
-    currentRoundNumber: nextRoundNumber,
-    status: "Playing",
-  });
-  await ctx.db.patch(session.lobbyId, {
-    currentRound: nextRoundNumber,
-    lastActivityAt: now,
-  });
-  await ctx.scheduler.runAt(
-    endsAt,
-    internal.feedItForwardInternal.handleRoundDeadline,
-    { roundId: nextRoundId },
-  );
+  await startNextRound(ctx, session, round.roundNumber + 1);
 }
 
 export const getSetupSlotPayload = internalQuery({
@@ -522,6 +542,7 @@ export const handleRoundDeadline = internalMutation({
 
     const submissions = await listRoundSubmissions(ctx, round._id);
     const now = Date.now();
+    const isFinalRound = round.roundNumber >= session.totalRounds;
 
     await Promise.all(
       submissions
@@ -538,26 +559,70 @@ export const handleRoundDeadline = internalMutation({
     );
 
     const refreshedSubmissions = await listRoundSubmissions(ctx, round._id);
-    const lockedPending = refreshedSubmissions.filter(
-      (submission) =>
-        submission.lockedAt !== undefined &&
-        submission.generationStatus === "Generating",
-    );
+    const lockedPendingCount = countLockedPendingImages(refreshedSubmissions);
 
-    if (lockedPending.length > 0) {
-      await ctx.db.patch(round._id, {
-        status: "WaitingForImages",
-        waitingStartedAt: now,
-      });
-      await ctx.db.patch(session._id, {
-        status: "WaitingForImages",
-      });
-      await ctx.db.patch(session.lobbyId, {
-        lastActivityAt: now,
-      });
+    if (isFinalRound && lockedPendingCount === 0) {
+      await applyRoundOutcome(ctx, session, round);
       return;
     }
 
-    await applyRoundOutcome(ctx, session, round);
+    const waitEndsAt = isFinalRound
+      ? undefined
+      : now + FEED_IT_FORWARD_MINIMUM_INTER_ROUND_WAIT_MS;
+
+    await ctx.db.patch(round._id, {
+      status: "WaitingForImages",
+      waitingStartedAt: now,
+      waitEndsAt,
+    });
+    await ctx.db.patch(session._id, {
+      status: "WaitingForImages",
+    });
+    await ctx.db.patch(session.lobbyId, {
+      lastActivityAt: now,
+    });
+
+    if (waitEndsAt !== undefined) {
+      await ctx.scheduler.runAt(
+        waitEndsAt,
+        internal.feedItForwardInternal.handleRoundWaitElapsed,
+        { roundId: round._id },
+      );
+    }
+
+    if (
+      lockedPendingCount > 0 ||
+      !hasMinimumWaitElapsed({ ...round, waitEndsAt }, now)
+    ) {
+      return;
+    }
+
+    await applyRoundOutcome(ctx, session, {
+      ...round,
+      status: "WaitingForImages",
+      waitingStartedAt: now,
+      waitEndsAt,
+    });
+  },
+});
+
+export const handleRoundWaitElapsed = internalMutation({
+  args: {
+    roundId: v.id("feedItForwardRounds"),
+  },
+  handler: async (ctx, args) => {
+    const round = await ctx.db.get(args.roundId);
+
+    if (round === null || round.status !== "WaitingForImages") {
+      return;
+    }
+
+    const session = await ctx.db.get(round.sessionId);
+
+    if (session === null || session.status !== "WaitingForImages") {
+      return;
+    }
+
+    await maybeAdvanceAfterWaiting(ctx, session._id, round._id);
   },
 });
