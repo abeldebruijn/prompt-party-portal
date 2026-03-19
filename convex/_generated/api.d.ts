@@ -9,6 +9,13 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as feedItForward from "../feedItForward.js";
+import type * as feedItForwardInternal from "../feedItForwardInternal.js";
+import type * as feedItForwardNode from "../feedItForwardNode.js";
+import type * as feed_it_forward_constants from "../feed_it_forward/constants.js";
+import type * as feed_it_forward_helpers from "../feed_it_forward/helpers.js";
+import type * as feed_it_forward_mutations from "../feed_it_forward/mutations.js";
+import type * as feed_it_forward_queries from "../feed_it_forward/queries.js";
 import type * as game_constants from "../game/constants.js";
 import type * as game_random from "../game/random.js";
 import type * as game_scoring from "../game/scoring.js";
@@ -42,6 +49,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  feedItForward: typeof feedItForward;
+  feedItForwardInternal: typeof feedItForwardInternal;
+  feedItForwardNode: typeof feedItForwardNode;
+  "feed_it_forward/constants": typeof feed_it_forward_constants;
+  "feed_it_forward/helpers": typeof feed_it_forward_helpers;
+  "feed_it_forward/mutations": typeof feed_it_forward_mutations;
+  "feed_it_forward/queries": typeof feed_it_forward_queries;
   "game/constants": typeof game_constants;
   "game/random": typeof game_random;
   "game/scoring": typeof game_scoring;

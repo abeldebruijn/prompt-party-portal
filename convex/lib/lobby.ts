@@ -4,10 +4,20 @@ export const DEPRECATED_IMAGE_GENERATION_GAME_NAME =
   "Generate image that fits" as const;
 export const IMAGE_GAME_NAME = "Pick image that suits a situation" as const;
 export const TEXT_GAME_NAME = "Pick text that suits a situation" as const;
-export const PLACEHOLDER_GAMES = [IMAGE_GAME_NAME, TEXT_GAME_NAME] as const;
+export const FEED_IT_FORWARD_GAME_NAME = "Feed It Forward" as const;
+export const PLACEHOLDER_GAMES = [
+  IMAGE_GAME_NAME,
+  TEXT_GAME_NAME,
+  FEED_IT_FORWARD_GAME_NAME,
+] as const;
 export const DEFAULT_LOBBY_GAME = IMAGE_GAME_NAME;
 export const DEFAULT_TEXT_GAME_ROUND_COUNT = 10;
 export const MAX_TEXT_GAME_ROUND_COUNT = 20;
+export const DEFAULT_FEED_IT_FORWARD_SETUP_PROMPTS = 2;
+export const MAX_FEED_IT_FORWARD_SETUP_PROMPTS = 6;
+export const DEFAULT_FEED_IT_FORWARD_ROUND_DURATION_SECONDS = 60;
+export const MIN_FEED_IT_FORWARD_ROUND_DURATION_SECONDS = 15;
+export const MAX_FEED_IT_FORWARD_ROUND_DURATION_SECONDS = 180;
 
 export const LOBBY_STATES = ["Creation", "Playing", "Completion"] as const;
 
@@ -24,6 +34,7 @@ export type AiPersonalityType = (typeof AI_PERSONALITY_TYPES)[number];
 export const lobbyGameValidator = v.union(
   v.literal(IMAGE_GAME_NAME),
   v.literal(TEXT_GAME_NAME),
+  v.literal(FEED_IT_FORWARD_GAME_NAME),
 );
 
 export const lobbyStateValidator = v.union(
@@ -98,6 +109,10 @@ export function sanitizeTextGameAnswer(answer: string) {
 }
 
 export function sanitizeImageGamePrompt(prompt: string) {
+  return prompt.trim().replace(/\s+/g, " ").slice(0, 240);
+}
+
+export function sanitizeFeedItForwardPrompt(prompt: string) {
   return prompt.trim().replace(/\s+/g, " ").slice(0, 240);
 }
 

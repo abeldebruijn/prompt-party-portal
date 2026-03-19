@@ -37,6 +37,7 @@ type LobbyGame = LobbySnapshot["lobby"]["selectedGame"];
 type AiPersonality = (typeof AI_PERSONALITY_OPTIONS)[number]["value"];
 
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
+import { FeedItForwardSetupCard } from "../_components/feed-it-forward-setup-card";
 import {
   LobbyInput,
   LobbySelect,
@@ -299,6 +300,7 @@ export default function LobbyRoomPage() {
   const resetLobby = useMutation(api.lobbies.resetLobby);
   const updateTextGameSettings = useMutation(api.textGame.updateSettings);
   const updateImageGameSettings = useMutation(api.imageGame.updateSettings);
+  const startFeedItForward = useMutation(api.feedItForward.startGame);
   const startTextGame = useMutation(api.textGame.startGame);
   const startImageGame = useMutation(api.imageGame.startGame);
 
@@ -368,6 +370,15 @@ export default function LobbyRoomPage() {
     }
   }, [lobbyId, router, snapshot?.lobby.selectedGame, snapshot?.lobby.state]);
 
+  useEffect(() => {
+    if (
+      snapshot?.lobby.selectedGame === "Feed It Forward" &&
+      snapshot.lobby.state !== "Creation"
+    ) {
+      router.replace(`/game/feed-it-forward/${lobbyId}`);
+    }
+  }, [lobbyId, router, snapshot?.lobby.selectedGame, snapshot?.lobby.state]);
+
   async function runAction(actionKey: string, operation: () => Promise<void>) {
     setPendingAction(actionKey);
     setActionError(null);
@@ -427,6 +438,7 @@ export default function LobbyRoomPage() {
     snapshot.lobby.selectedGame === "Pick text that suits a situation";
   const isImageGame =
     snapshot.lobby.selectedGame === "Pick image that suits a situation";
+  const isFeedItForward = snapshot.lobby.selectedGame === "Feed It Forward";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-center px-4 py-10 sm:px-6 lg:px-8">
@@ -508,6 +520,15 @@ export default function LobbyRoomPage() {
                   viewerVote={viewerVote}
                   voteSummary={snapshot.voteSummary}
                 />
+
+                {isFeedItForward ? (
+                  <FeedItForwardSetupCard
+                    isHost={isHost}
+                    lobbyId={lobbyId}
+                    pendingAction={pendingAction}
+                    runAction={runAction}
+                  />
+                ) : null}
 
                 {isHost ? (
                   <div className="space-y-4">
@@ -618,6 +639,11 @@ export default function LobbyRoomPage() {
                             return;
                           }
 
+                          if (isFeedItForward) {
+                            await startFeedItForward({ lobbyId });
+                            return;
+                          }
+
                           await startRound({ lobbyId });
                         })
                       }
@@ -631,6 +657,8 @@ export default function LobbyRoomPage() {
                         "Start text game"
                       ) : isImageGame ? (
                         "Start image game"
+                      ) : isFeedItForward ? (
+                        "Start Feed It Forward"
                       ) : (
                         "Start round"
                       )}
