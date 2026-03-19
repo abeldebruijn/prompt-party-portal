@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import type { Id } from "../_generated/dataModel";
 import { mutation } from "../_generated/server";
 import {
   ensureViewerUsername,
@@ -584,11 +585,82 @@ export const resetLobby = mutation({
       imageSessions.map((session) => ctx.db.delete(session._id)),
     );
 
+    const feedSessions = await ctx.db
+      .query("feedItForwardSessions")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const feedRounds = await ctx.db
+      .query("feedItForwardRounds")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const feedChains = await ctx.db
+      .query("feedItForwardChains")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const feedSetupSlots = await ctx.db
+      .query("feedItForwardSetupSlots")
+      .withIndex("lobbyId", (query) => query.eq("lobbyId", lobby._id))
+      .collect();
+    const feedSteps = (
+      await Promise.all(
+        feedSessions.map((session) =>
+          ctx.db
+            .query("feedItForwardChainSteps")
+            .withIndex("sessionId", (query) =>
+              query.eq("sessionId", session._id),
+            )
+            .collect(),
+        ),
+      )
+    ).flat();
+    const feedSubmissions = (
+      await Promise.all(
+        feedSessions.map((session) =>
+          ctx.db
+            .query("feedItForwardSubmissions")
+            .withIndex("sessionId", (query) =>
+              query.eq("sessionId", session._id),
+            )
+            .collect(),
+        ),
+      )
+    ).flat();
+    const feedStorageIds = [
+      ...new Set(
+        [
+          ...feedSetupSlots.flatMap((slot) =>
+            slot.imageStorageId ? [slot.imageStorageId] : [],
+          ),
+          ...feedSubmissions.flatMap((submission) =>
+            submission.imageStorageId ? [submission.imageStorageId] : [],
+          ),
+        ].map(String),
+      ),
+    ] as string[];
+
+    await Promise.all(
+      feedStorageIds.map((storageId) =>
+        ctx.storage.delete(storageId as Id<"_storage">),
+      ),
+    );
+    await Promise.all(
+      feedSubmissions.map((submission) => ctx.db.delete(submission._id)),
+    );
+    await Promise.all(feedSteps.map((step) => ctx.db.delete(step._id)));
+    await Promise.all(feedRounds.map((round) => ctx.db.delete(round._id)));
+    await Promise.all(feedChains.map((chain) => ctx.db.delete(chain._id)));
+    await Promise.all(feedSetupSlots.map((slot) => ctx.db.delete(slot._id)));
+    await Promise.all(
+      feedSessions.map((session) => ctx.db.delete(session._id)),
+    );
+
     await ctx.db.patch(lobby._id, {
       state: "Creation",
       currentRound: 0,
       startedAt: undefined,
       completedAt: undefined,
+      feedItForwardSetupPromptCount: undefined,
+      feedItForwardRoundDurationSeconds: undefined,
       lastActivityAt: Date.now(),
     });
 

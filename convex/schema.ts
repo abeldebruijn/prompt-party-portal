@@ -3,6 +3,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
   DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+  FEED_IT_FORWARD_GAME_NAME,
   IMAGE_GAME_NAME,
   TEXT_GAME_NAME,
 } from "./lib/lobby";
@@ -11,6 +12,7 @@ const lobbyGameValue = v.union(
   v.literal(DEPRECATED_IMAGE_GENERATION_GAME_NAME),
   v.literal(IMAGE_GAME_NAME),
   v.literal(TEXT_GAME_NAME),
+  v.literal(FEED_IT_FORWARD_GAME_NAME),
 );
 
 const schema = defineSchema({
@@ -38,6 +40,8 @@ const schema = defineSchema({
       v.literal("Completion"),
     ),
     textGameRoundCount: v.optional(v.number()),
+    feedItForwardSetupPromptCount: v.optional(v.number()),
+    feedItForwardRoundDurationSeconds: v.optional(v.number()),
     currentRound: v.number(),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
@@ -213,6 +217,148 @@ const schema = defineSchema({
     judgedAt: v.optional(v.number()),
   })
     .index("roundId", ["roundId"])
+    .index("roundIdAndAuthorPlayerId", ["roundId", "authorPlayerId"]),
+
+  feedItForwardSessions: defineTable({
+    lobbyId: v.id("lobbies"),
+    setupPromptCount: v.number(),
+    roundDurationSeconds: v.number(),
+    playerOrderIds: v.array(v.id("lobbyPlayers")),
+    totalRounds: v.number(),
+    currentRoundNumber: v.number(),
+    status: v.union(
+      v.literal("WaitingForSetup"),
+      v.literal("Playing"),
+      v.literal("WaitingForImages"),
+      v.literal("Completed"),
+    ),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  }).index("lobbyId", ["lobbyId"]),
+
+  feedItForwardSetupSlots: defineTable({
+    lobbyId: v.id("lobbies"),
+    playerId: v.id("lobbyPlayers"),
+    slotIndex: v.number(),
+    sourceKey: v.string(),
+    prompt: v.optional(v.string()),
+    promptEmbedding: v.optional(v.array(v.float64())),
+    imageStorageId: v.optional(v.id("_storage")),
+    imageMediaType: v.optional(v.string()),
+    status: v.union(
+      v.literal("Empty"),
+      v.literal("Generating"),
+      v.literal("Ready"),
+    ),
+    isAutoFilled: v.boolean(),
+    finalizedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("lobbyId", ["lobbyId"])
+    .index("lobbyIdAndPlayerIdAndSlotIndex", [
+      "lobbyId",
+      "playerId",
+      "slotIndex",
+    ]),
+
+  feedItForwardChains: defineTable({
+    sessionId: v.id("feedItForwardSessions"),
+    lobbyId: v.id("lobbies"),
+    ownerPlayerId: v.id("lobbyPlayers"),
+    slotIndex: v.number(),
+    originalSourceKey: v.string(),
+    currentSourceKey: v.optional(v.string()),
+    currentStepNumber: v.optional(v.number()),
+    status: v.union(v.literal("Pending"), v.literal("Ready")),
+  })
+    .index("sessionId", ["sessionId"])
+    .index("sessionIdAndOwnerPlayerIdAndSlotIndex", [
+      "sessionId",
+      "ownerPlayerId",
+      "slotIndex",
+    ])
+    .index("lobbyId", ["lobbyId"]),
+
+  feedItForwardChainSteps: defineTable({
+    sessionId: v.id("feedItForwardSessions"),
+    lobbyId: v.id("lobbies"),
+    ownerPlayerId: v.id("lobbyPlayers"),
+    slotIndex: v.number(),
+    stepNumber: v.number(),
+    sourceKey: v.string(),
+    authorPlayerId: v.id("lobbyPlayers"),
+    prompt: v.string(),
+    promptEmbedding: v.array(v.float64()),
+    imageStorageId: v.id("_storage"),
+    imageMediaType: v.string(),
+    roundNumber: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("sessionId", ["sessionId"])
+    .index("sessionIdAndOwnerPlayerIdAndSlotIndex", [
+      "sessionId",
+      "ownerPlayerId",
+      "slotIndex",
+    ])
+    .index("sourceKey", ["sourceKey"])
+    .vectorIndex("by_prompt_embedding", {
+      vectorField: "promptEmbedding",
+      dimensions: 1536,
+      filterFields: ["sourceKey", "lobbyId", "ownerPlayerId", "slotIndex"],
+    }),
+
+  feedItForwardRounds: defineTable({
+    sessionId: v.id("feedItForwardSessions"),
+    lobbyId: v.id("lobbies"),
+    roundNumber: v.number(),
+    slotIndex: v.number(),
+    hopNumber: v.number(),
+    status: v.union(
+      v.literal("Playing"),
+      v.literal("WaitingForImages"),
+      v.literal("Completed"),
+    ),
+    startedAt: v.number(),
+    endsAt: v.number(),
+    waitingStartedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("sessionId", ["sessionId"])
+    .index("sessionIdAndRoundNumber", ["sessionId", "roundNumber"])
+    .index("lobbyId", ["lobbyId"]),
+
+  feedItForwardSubmissions: defineTable({
+    sessionId: v.id("feedItForwardSessions"),
+    roundId: v.id("feedItForwardRounds"),
+    lobbyId: v.id("lobbies"),
+    roundNumber: v.number(),
+    authorPlayerId: v.id("lobbyPlayers"),
+    ownerPlayerId: v.id("lobbyPlayers"),
+    slotIndex: v.number(),
+    sourceKey: v.string(),
+    previousSourceKey: v.string(),
+    originalSourceKey: v.string(),
+    previousStepNumber: v.number(),
+    prompt: v.string(),
+    promptEmbedding: v.optional(v.array(v.float64())),
+    imageStorageId: v.optional(v.id("_storage")),
+    imageMediaType: v.optional(v.string()),
+    submittedAt: v.number(),
+    latestGenerationNonce: v.number(),
+    generationStatus: v.union(
+      v.literal("Generating"),
+      v.literal("Ready"),
+      v.literal("Failed"),
+    ),
+    lockedAt: v.optional(v.number()),
+    previousSimilarity: v.optional(v.number()),
+    originalSimilarity: v.optional(v.number()),
+    previousScore: v.optional(v.number()),
+    originalScore: v.optional(v.number()),
+    totalScore: v.optional(v.number()),
+  })
+    .index("roundId", ["roundId"])
+    .index("sessionId", ["sessionId"])
     .index("roundIdAndAuthorPlayerId", ["roundId", "authorPlayerId"]),
 });
 
