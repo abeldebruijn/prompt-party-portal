@@ -32,6 +32,12 @@ type ProgressEntry = NonNullable<
   NonNullable<NonNullable<GameSnapshot>["round"]>["progress"]
 >[number];
 type LeaderboardEntry = NonNullable<GameSnapshot>["leaderboard"][number];
+type JudgeSubmission = NonNullable<
+  NonNullable<NonNullable<GameSnapshot>["round"]>["judgeSubmissions"]
+>[number];
+type WinnerEntry = NonNullable<
+  NonNullable<NonNullable<GameSnapshot>["round"]>["winners"]
+>[number];
 type LeaderboardRow = {
   entry: LeaderboardEntry | null;
   progress: ProgressEntry | null;
@@ -334,7 +340,7 @@ function buildLeaderboardRows(
   progress: ProgressEntry[] | undefined,
 ) {
   const progressByPlayerId = new Map(
-    (progress ?? []).map((entry) => [entry.playerId, entry]),
+    (progress ?? []).map((entry: ProgressEntry) => [entry.playerId, entry]),
   );
   const seen = new Set<string>();
   const rows: LeaderboardRow[] = leaderboard.map((entry) => {
@@ -772,7 +778,7 @@ function JudgeStage({
   const allSubmissionsRated = useMemo(
     () =>
       snapshot.round.judgeSubmissions.every(
-        (submission) =>
+        (submission: JudgeSubmission) =>
           submission.correctnessStars !== null &&
           submission.creativityStars !== null,
       ),
@@ -831,95 +837,97 @@ function JudgeStage({
     <div className="mt-6 border-t border-foreground/10 pt-6">
       {isJudge ? (
         <div className="mt-6 space-y-4">
-          {snapshot.round.judgeSubmissions.map((submission) => {
-            const draft = ratingDrafts[submission.submissionId] ?? {
-              correctnessStars: submission.correctnessStars,
-              creativityStars: submission.creativityStars,
-            };
-            const isSaving = Boolean(
-              savingBySubmissionId[submission.submissionId],
-            );
+          {snapshot.round.judgeSubmissions.map(
+            (submission: JudgeSubmission) => {
+              const draft = ratingDrafts[submission.submissionId] ?? {
+                correctnessStars: submission.correctnessStars,
+                creativityStars: submission.creativityStars,
+              };
+              const isSaving = Boolean(
+                savingBySubmissionId[submission.submissionId],
+              );
 
-            return (
-              <div
-                key={submission.submissionId}
-                className="relative rounded-3xl border border-foreground/10 bg-background/75 p-5 gap-4 grid md:grid-cols-2"
-              >
-                {isSaving ? (
-                  <div className="absolute right-4 top-4 text-foreground/60">
-                    <Loader2Icon className="size-4 animate-spin" />
-                    <span className="sr-only">Saving...</span>
+              return (
+                <div
+                  key={submission.submissionId}
+                  className="relative rounded-3xl border border-foreground/10 bg-background/75 p-5 gap-4 grid md:grid-cols-2"
+                >
+                  {isSaving ? (
+                    <div className="absolute right-4 top-4 text-foreground/60">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      <span className="sr-only">Saving...</span>
+                    </div>
+                  ) : null}
+
+                  {submission.imageUrl ? (
+                    <Image
+                      alt="Anonymous submission"
+                      className="mt-3 w-full max-w-80 aspect-square md:size-80 rounded-2xl border border-foreground/10 object-cover"
+                      src={submission.imageUrl}
+                      width={1024}
+                      height={1024}
+                    />
+                  ) : (
+                    <div className="mt-3 flex items-center gap-2 text-foreground/60">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      <span className="text-sm">Image unavailable</span>
+                    </div>
+                  )}
+
+                  <div className="mt-5 space-y-6">
+                    <p className="mt-4 text-sm leading-6 text-foreground/70">
+                      <span className="font-medium text-foreground/80">
+                        Prompt:
+                      </span>{" "}
+                      {submission.prompt}
+                    </p>
+                    <RatingSelector
+                      label="Correctness"
+                      onChange={(value) => {
+                        const previous = draft;
+                        const nextDraft = {
+                          ...draft,
+                          correctnessStars: value,
+                        };
+                        setRatingDrafts((current) => ({
+                          ...current,
+                          [submission.submissionId]: nextDraft,
+                        }));
+                        saveSubmissionRating(
+                          submission.submissionId,
+                          { correctnessStars: value },
+                          previous,
+                        );
+                      }}
+                      value={draft.correctnessStars}
+                      disabled={isSaving}
+                    />
+                    <RatingSelector
+                      label="Creativity"
+                      onChange={(value) => {
+                        const previous = draft;
+                        const nextDraft = {
+                          ...draft,
+                          creativityStars: value,
+                        };
+                        setRatingDrafts((current) => ({
+                          ...current,
+                          [submission.submissionId]: nextDraft,
+                        }));
+                        saveSubmissionRating(
+                          submission.submissionId,
+                          { creativityStars: value },
+                          previous,
+                        );
+                      }}
+                      value={draft.creativityStars}
+                      disabled={isSaving}
+                    />
                   </div>
-                ) : null}
-
-                {submission.imageUrl ? (
-                  <Image
-                    alt="Anonymous submission"
-                    className="mt-3 w-full max-w-80 aspect-square md:size-80 rounded-2xl border border-foreground/10 object-cover"
-                    src={submission.imageUrl}
-                    width={1024}
-                    height={1024}
-                  />
-                ) : (
-                  <div className="mt-3 flex items-center gap-2 text-foreground/60">
-                    <Loader2Icon className="size-4 animate-spin" />
-                    <span className="text-sm">Image unavailable</span>
-                  </div>
-                )}
-
-                <div className="mt-5 space-y-6">
-                  <p className="mt-4 text-sm leading-6 text-foreground/70">
-                    <span className="font-medium text-foreground/80">
-                      Prompt:
-                    </span>{" "}
-                    {submission.prompt}
-                  </p>
-                  <RatingSelector
-                    label="Correctness"
-                    onChange={(value) => {
-                      const previous = draft;
-                      const nextDraft = {
-                        ...draft,
-                        correctnessStars: value,
-                      };
-                      setRatingDrafts((current) => ({
-                        ...current,
-                        [submission.submissionId]: nextDraft,
-                      }));
-                      saveSubmissionRating(
-                        submission.submissionId,
-                        { correctnessStars: value },
-                        previous,
-                      );
-                    }}
-                    value={draft.correctnessStars}
-                    disabled={isSaving}
-                  />
-                  <RatingSelector
-                    label="Creativity"
-                    onChange={(value) => {
-                      const previous = draft;
-                      const nextDraft = {
-                        ...draft,
-                        creativityStars: value,
-                      };
-                      setRatingDrafts((current) => ({
-                        ...current,
-                        [submission.submissionId]: nextDraft,
-                      }));
-                      saveSubmissionRating(
-                        submission.submissionId,
-                        { creativityStars: value },
-                        previous,
-                      );
-                    }}
-                    value={draft.creativityStars}
-                    disabled={isSaving}
-                  />
                 </div>
-              </div>
-            );
-          })}
+              );
+            },
+          )}
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-4">
             {isJudge && !allSubmissionsRated && (
@@ -1082,7 +1090,7 @@ function PresentStage({
     >
       {snapshot.round.winners.length > 0 ? (
         <div className="grid gap-4">
-          {snapshot.round.winners.map((winner, index) => (
+          {snapshot.round.winners.map((winner: WinnerEntry, index: number) => (
             <motion.article
               key={winner.submissionId}
               animate={{ opacity: 1, y: 0, scale: 1 }}
