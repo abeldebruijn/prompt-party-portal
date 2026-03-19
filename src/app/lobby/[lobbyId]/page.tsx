@@ -521,6 +521,15 @@ export default function LobbyRoomPage() {
                   voteSummary={snapshot.voteSummary}
                 />
 
+                {isFeedItForward ? (
+                  <FeedItForwardSetupCard
+                    isHost={isHost}
+                    lobbyId={lobbyId}
+                    pendingAction={pendingAction}
+                    runAction={runAction}
+                  />
+                ) : null}
+
                 {isHost ? (
                   <div className="space-y-4">
                     {isTextGame ? (
@@ -613,15 +622,6 @@ export default function LobbyRoomPage() {
                           </Button>
                         </div>
                       </label>
-                    ) : null}
-
-                    {isFeedItForward ? (
-                      <FeedItForwardSetupCard
-                        isHost={isHost}
-                        lobbyId={lobbyId}
-                        pendingAction={pendingAction}
-                        runAction={runAction}
-                      />
                     ) : null}
 
                     <Button

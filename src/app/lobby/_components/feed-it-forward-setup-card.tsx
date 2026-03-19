@@ -27,7 +27,6 @@ export function FeedItForwardSetupCard({
 }) {
   const snapshot = useQuery(api.feedItForward.getSetupState, { lobbyId });
   const updateSettings = useMutation(api.feedItForward.updateSettings);
-  const finalizeSetupSlot = useMutation(api.feedItForward.finalizeSetupSlot);
   const generateSetupPrompt = useAction(
     api.feedItForwardNode.generateSetupPrompt,
   );
@@ -91,7 +90,6 @@ export function FeedItForwardSetupCard({
               slot={slot}
               pendingAction={pendingAction}
               runAction={runAction}
-              finalizeSetupSlot={finalizeSetupSlot}
               generateSetupPrompt={generateSetupPrompt}
               generateSetupImage={generateSetupImage}
             />
@@ -194,7 +192,6 @@ function SetupSlotCard({
   slot,
   pendingAction,
   runAction,
-  finalizeSetupSlot,
   generateSetupPrompt,
   generateSetupImage,
 }: {
@@ -205,10 +202,6 @@ function SetupSlotCard({
     actionKey: string,
     operation: () => Promise<void>,
   ) => Promise<void>;
-  finalizeSetupSlot: (args: {
-    lobbyId: Id<"lobbies">;
-    slotIndex: number;
-  }) => Promise<unknown>;
   generateSetupPrompt: () => Promise<{ prompt: string }>;
   generateSetupImage: (args: {
     lobbyId: Id<"lobbies">;
@@ -230,86 +223,72 @@ function SetupSlotCard({
         </div>
       </div>
 
-      <LobbyTextarea
-        className="mt-4"
-        defaultValue={slot.prompt}
-        id={`fitf-slot-${slot.slotIndex}`}
-        placeholder="Generate or write an impossible scene."
-      />
-
-      <div className="mt-4 flex flex-wrap gap-3">
-        <Button
-          className="rounded-full"
-          disabled={pendingAction === `${actionKey}:text`}
-          onClick={() =>
-            void runAction(`${actionKey}:text`, async () => {
-              const result = await generateSetupPrompt();
-              const element = document.getElementById(
-                `fitf-slot-${slot.slotIndex}`,
-              ) as HTMLTextAreaElement | null;
-
-              if (element) {
-                element.value = result.prompt;
-              }
-            })
-          }
-          type="button"
-          variant="outline"
-        >
-          <SparklesIcon className="size-4" />
-          Generate prompt
-        </Button>
-
-        <Button
-          className="rounded-full"
-          disabled={pendingAction === `${actionKey}:image`}
-          onClick={() =>
-            void runAction(`${actionKey}:image`, async () => {
-              const element = document.getElementById(
-                `fitf-slot-${slot.slotIndex}`,
-              ) as HTMLTextAreaElement | null;
-
-              await generateSetupImage({
-                lobbyId,
-                slotIndex: slot.slotIndex,
-                prompt: element?.value ?? "",
-              });
-            })
-          }
-          type="button"
-        >
-          Generate image
-        </Button>
-
-        <Button
-          className="rounded-full"
-          disabled={!slot.imageUrl || slot.finalizedAt !== null}
-          onClick={() =>
-            void runAction(`${actionKey}:finalize`, async () => {
-              await finalizeSetupSlot({
-                lobbyId,
-                slotIndex: slot.slotIndex,
-              });
-            })
-          }
-          type="button"
-          variant="secondary"
-        >
-          Finalize
-        </Button>
-      </div>
-
-      {slot.imageUrl ? (
-        <div className="mt-4 overflow-hidden rounded-3xl border border-foreground/10">
-          <Image
-            alt={`Setup slot ${slot.slotIndex + 1}`}
-            className="aspect-square w-full object-cover"
-            height={320}
-            src={slot.imageUrl}
-            width={320}
+      <div className="mt-4 flex flex-col gap-4 md:flex-row md:flex-wrap md:items-start">
+        <div className="min-w-0 md:min-w-[24rem] md:flex-1">
+          <LobbyTextarea
+            defaultValue={slot.prompt}
+            id={`fitf-slot-${slot.slotIndex}`}
+            placeholder="Generate or write an impossible scene."
           />
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Button
+              className="rounded-full"
+              disabled={pendingAction === `${actionKey}:text`}
+              onClick={() =>
+                void runAction(`${actionKey}:text`, async () => {
+                  const result = await generateSetupPrompt();
+                  const element = document.getElementById(
+                    `fitf-slot-${slot.slotIndex}`,
+                  ) as HTMLTextAreaElement | null;
+
+                  if (element) {
+                    element.value = result.prompt;
+                  }
+                })
+              }
+              type="button"
+              variant="outline"
+            >
+              <SparklesIcon className="size-4" />
+              Generate prompt
+            </Button>
+
+            <Button
+              className="rounded-full"
+              disabled={pendingAction === `${actionKey}:image`}
+              onClick={() =>
+                void runAction(`${actionKey}:image`, async () => {
+                  const element = document.getElementById(
+                    `fitf-slot-${slot.slotIndex}`,
+                  ) as HTMLTextAreaElement | null;
+
+                  await generateSetupImage({
+                    lobbyId,
+                    slotIndex: slot.slotIndex,
+                    prompt: element?.value ?? "",
+                  });
+                })
+              }
+              type="button"
+            >
+              Generate image
+            </Button>
+          </div>
         </div>
-      ) : null}
+
+        {slot.imageUrl ? (
+          <div className="overflow-hidden rounded-3xl border border-foreground/10 md:ml-auto md:w-80 md:max-w-full md:flex-none">
+            <Image
+              alt={`Setup slot ${slot.slotIndex + 1}`}
+              className="aspect-square w-full object-cover"
+              height={320}
+              src={slot.imageUrl}
+              width={320}
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

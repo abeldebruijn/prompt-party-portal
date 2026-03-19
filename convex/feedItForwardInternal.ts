@@ -382,7 +382,7 @@ export const storeSetupGenerationResult = internalMutation({
       imageMediaType: args.imageMediaType,
       status: "Ready",
       isAutoFilled: args.isAutoFilled,
-      finalizedAt: args.isAutoFilled ? now : slot.finalizedAt,
+      finalizedAt: now,
       updatedAt: now,
     });
 
