@@ -4,12 +4,43 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2Icon, SparklesIcon } from "lucide-react";
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api, type Id } from "@/lib/convex";
-import { LobbyInput, LobbyTextarea } from "./lobby-ui";
+import { LobbyInput } from "./lobby-ui";
 
 type SetupSnapshot = FunctionReturnType<typeof api.feedItForward.getSetupState>;
+type SetupPromptParts = FunctionReturnType<
+  typeof api.feedItForwardNode.generateSetupPrompt
+>["promptParts"];
+
+function createEmptyPromptParts(): SetupPromptParts {
+  return {
+    subject: "",
+    action: "",
+    detail1: "",
+    detail2: "",
+    detail3: "",
+  };
+}
+
+function derivePromptParts(
+  slot: Pick<SetupSnapshot["viewerSlots"][number], "prompt" | "promptParts">,
+): SetupPromptParts {
+  if (slot.promptParts) {
+    return slot.promptParts;
+  }
+
+  if (slot.prompt) {
+    return {
+      ...createEmptyPromptParts(),
+      subject: slot.prompt,
+    };
+  }
+
+  return createEmptyPromptParts();
+}
 
 export function FeedItForwardSetupCard({
   lobbyId,
@@ -202,14 +233,27 @@ function SetupSlotCard({
     actionKey: string,
     operation: () => Promise<void>,
   ) => Promise<void>;
-  generateSetupPrompt: () => Promise<{ prompt: string }>;
+  generateSetupPrompt: () => Promise<{ promptParts: SetupPromptParts }>;
   generateSetupImage: (args: {
     lobbyId: Id<"lobbies">;
     slotIndex: number;
-    prompt: string;
+    promptParts: SetupPromptParts;
   }) => Promise<unknown>;
 }) {
   const actionKey = `fitf-slot:${slot.slotIndex}`;
+  const [promptParts, setPromptParts] = useState<SetupPromptParts>(() =>
+    derivePromptParts(slot),
+  );
+
+  useEffect(() => {
+    setPromptParts(
+      derivePromptParts({
+        prompt: slot.prompt,
+        promptParts: slot.promptParts,
+      }),
+    );
+  }, [slot.prompt, slot.promptParts]);
+
   return (
     <div className="rounded-3xl border border-foreground/10 bg-background/75 p-4">
       <div className="flex items-center justify-between gap-3">
@@ -225,11 +269,107 @@ function SetupSlotCard({
 
       <div className="mt-4 flex flex-col gap-4 md:flex-row md:flex-wrap md:items-start">
         <div className="min-w-0 md:min-w-[24rem] md:flex-1">
-          <LobbyTextarea
-            defaultValue={slot.prompt}
-            id={`fitf-slot-${slot.slotIndex}`}
-            placeholder="Generate or write an impossible scene."
-          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label
+              className="space-y-2 sm:col-span-2"
+              htmlFor={`fitf-subject-${slot.slotIndex}`}
+            >
+              <span className="text-sm font-medium text-foreground/80">
+                An animal or object
+              </span>
+              <LobbyInput
+                id={`fitf-subject-${slot.slotIndex}`}
+                onChange={(event) =>
+                  setPromptParts((current) => ({
+                    ...current,
+                    subject: event.target.value,
+                  }))
+                }
+                placeholder="A velvet otter orchestra"
+                value={promptParts.subject}
+              />
+            </label>
+
+            <label
+              className="space-y-2 sm:col-span-2"
+              htmlFor={`fitf-action-${slot.slotIndex}`}
+            >
+              <span className="text-sm font-medium text-foreground/80">
+                Does action
+              </span>
+              <LobbyInput
+                id={`fitf-action-${slot.slotIndex}`}
+                onChange={(event) =>
+                  setPromptParts((current) => ({
+                    ...current,
+                    action: event.target.value,
+                  }))
+                }
+                placeholder="sails across a lemon thunderstorm"
+                value={promptParts.action}
+              />
+            </label>
+
+            <label
+              className="space-y-2"
+              htmlFor={`fitf-detail1-${slot.slotIndex}`}
+            >
+              <span className="text-sm font-medium text-foreground/80">
+                Detail 1
+              </span>
+              <LobbyInput
+                id={`fitf-detail1-${slot.slotIndex}`}
+                onChange={(event) =>
+                  setPromptParts((current) => ({
+                    ...current,
+                    detail1: event.target.value,
+                  }))
+                }
+                placeholder="mirror-bright boots"
+                value={promptParts.detail1}
+              />
+            </label>
+
+            <label
+              className="space-y-2"
+              htmlFor={`fitf-detail2-${slot.slotIndex}`}
+            >
+              <span className="text-sm font-medium text-foreground/80">
+                Detail 2
+              </span>
+              <LobbyInput
+                id={`fitf-detail2-${slot.slotIndex}`}
+                onChange={(event) =>
+                  setPromptParts((current) => ({
+                    ...current,
+                    detail2: event.target.value,
+                  }))
+                }
+                placeholder="mint lanterns"
+                value={promptParts.detail2}
+              />
+            </label>
+
+            <label
+              className="space-y-2 sm:col-span-2"
+              htmlFor={`fitf-detail3-${slot.slotIndex}`}
+            >
+              <span className="text-sm font-medium text-foreground/80">
+                Detail 3
+              </span>
+              <LobbyInput
+                id={`fitf-detail3-${slot.slotIndex}`}
+                onChange={(event) =>
+                  setPromptParts((current) => ({
+                    ...current,
+                    detail3: event.target.value,
+                  }))
+                }
+                placeholder="ribbons of stardust"
+                value={promptParts.detail3}
+              />
+            </label>
+          </div>
 
           <div className="mt-4 flex flex-wrap gap-3">
             <Button
@@ -238,13 +378,7 @@ function SetupSlotCard({
               onClick={() =>
                 void runAction(`${actionKey}:text`, async () => {
                   const result = await generateSetupPrompt();
-                  const element = document.getElementById(
-                    `fitf-slot-${slot.slotIndex}`,
-                  ) as HTMLTextAreaElement | null;
-
-                  if (element) {
-                    element.value = result.prompt;
-                  }
+                  setPromptParts(result.promptParts);
                 })
               }
               type="button"
@@ -259,14 +393,10 @@ function SetupSlotCard({
               disabled={pendingAction === `${actionKey}:image`}
               onClick={() =>
                 void runAction(`${actionKey}:image`, async () => {
-                  const element = document.getElementById(
-                    `fitf-slot-${slot.slotIndex}`,
-                  ) as HTMLTextAreaElement | null;
-
                   await generateSetupImage({
                     lobbyId,
                     slotIndex: slot.slotIndex,
-                    prompt: element?.value ?? "",
+                    promptParts,
                   });
                 })
               }

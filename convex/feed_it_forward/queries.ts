@@ -72,6 +72,7 @@ export const getSetupState = query({
             slotIndex,
             status: slot?.status ?? "Empty",
             prompt: slot?.prompt ?? "",
+            promptParts: slot?.promptParts ?? null,
             imageStorageId: slot?.imageStorageId ?? null,
             imageUrl:
               slot?.imageStorageId !== undefined

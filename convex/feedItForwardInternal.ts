@@ -385,6 +385,13 @@ export const storeSetupGenerationResult = internalMutation({
     playerId: v.id("lobbyPlayers"),
     slotIndex: v.number(),
     prompt: v.string(),
+    promptParts: v.object({
+      subject: v.string(),
+      action: v.string(),
+      detail1: v.string(),
+      detail2: v.string(),
+      detail3: v.string(),
+    }),
     promptEmbedding: v.array(v.float64()),
     imageStorageId: v.id("_storage"),
     imageMediaType: v.string(),
@@ -397,6 +404,7 @@ export const storeSetupGenerationResult = internalMutation({
 
     await ctx.db.patch(slot._id, {
       prompt: args.prompt,
+      promptParts: args.promptParts,
       promptEmbedding: args.promptEmbedding,
       imageStorageId: args.imageStorageId,
       imageMediaType: args.imageMediaType,

@@ -1,7 +1,8 @@
 "use node";
 
-import { embed, gateway, generateImage, generateText } from "ai";
+import { embed, gateway, generateImage, generateText, Output } from "ai";
 import { v } from "convex/values";
+import { z } from "zod";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type ActionCtx, action, internalAction } from "./_generated/server";
@@ -24,6 +25,35 @@ const gatewayProvider = gateway as unknown as {
   ) => Parameters<typeof generateText>[0]["model"];
   image: (modelId: string) => Parameters<typeof generateImage>[0]["model"];
 };
+
+const setupPromptPartsSchema = z.object({
+  subject: z.string().trim().min(1).max(80),
+  action: z.string().trim().min(1).max(120),
+  detail1: z.string().trim().min(1).max(120),
+  detail2: z.string().trim().min(1).max(120),
+  detail3: z.string().trim().min(1).max(120),
+});
+
+type SetupPromptParts = z.infer<typeof setupPromptPartsSchema>;
+
+function normalizePromptPart(value: string) {
+  return value.trim().replace(/\s+/g, " ").slice(0, 120);
+}
+
+function normalizeSetupPromptParts(promptParts: SetupPromptParts) {
+  return setupPromptPartsSchema.parse({
+    subject: normalizePromptPart(promptParts.subject),
+    action: normalizePromptPart(promptParts.action),
+    detail1: normalizePromptPart(promptParts.detail1),
+    detail2: normalizePromptPart(promptParts.detail2),
+    detail3: normalizePromptPart(promptParts.detail3),
+  });
+}
+
+function composeSetupPrompt(promptParts: SetupPromptParts) {
+  const normalized = normalizeSetupPromptParts(promptParts);
+  return `${normalized.subject} ${normalized.action}, with ${normalized.detail1}, ${normalized.detail2}, and ${normalized.detail3}.`;
+}
 
 function deterministicEmbedding(input: string) {
   const values = new Array<number>(FEED_IT_FORWARD_EMBEDDING_DIMENSIONS);
@@ -55,17 +85,33 @@ async function generatePromptEmbedding(prompt: string) {
   return result.embedding;
 }
 
-async function generatePromptText() {
+async function generatePromptParts() {
   if (process.env.FEED_IT_FORWARD_MOCK === "1") {
-    return "A velvet otter orchestra sails across a lemon thunderstorm, wearing mirror-bright boots, juggling mint lanterns, and trailing ribbons of stardust.";
+    return setupPromptPartsSchema.parse({
+      subject: "A velvet otter orchestra",
+      action: "sails across a lemon thunderstorm",
+      detail1: "mirror-bright boots",
+      detail2: "mint lanterns",
+      detail3: "ribbons of stardust",
+    });
   }
 
-  const result = await generateText({
+  const { output } = await generateText({
     model: gatewayProvider.languageModel(FEED_IT_FORWARD_TEXT_MODEL),
-    prompt: FEED_IT_FORWARD_PROMPT_WRITER_INSTRUCTIONS,
+    output: Output.object({
+      schema: setupPromptPartsSchema,
+    }),
+    prompt: `${FEED_IT_FORWARD_PROMPT_WRITER_INSTRUCTIONS}
+
+Return an object with exactly these fields:
+- subject: the animal or object
+- action: what it does
+- detail1
+- detail2
+- detail3`,
   });
 
-  return result.text.trim();
+  return normalizeSetupPromptParts(output);
 }
 
 async function generatePromptImage(prompt: string) {
@@ -113,7 +159,7 @@ export const generateSetupPrompt = action({
   args: {},
   handler: async () => {
     return {
-      prompt: await generatePromptText(),
+      promptParts: await generatePromptParts(),
     };
   },
 });
@@ -121,7 +167,7 @@ export const generateSetupPrompt = action({
 type SetupImageArgs = {
   lobbyId: Id<"lobbies">;
   slotIndex: number;
-  prompt: string;
+  promptParts: SetupPromptParts;
 };
 
 const generateSetupImageHandler = async (
@@ -135,11 +181,8 @@ const generateSetupImageHandler = async (
       slotIndex: args.slotIndex,
     },
   )) as { playerId: Id<"lobbyPlayers"> };
-  const prompt = args.prompt.trim().replace(/\s+/g, " ").slice(0, 240);
-
-  if (!prompt) {
-    throw new Error("Prompts need at least one visible character.");
-  }
+  const promptParts = normalizeSetupPromptParts(args.promptParts);
+  const prompt = composeSetupPrompt(promptParts).slice(0, 240);
 
   await ctx.runMutation(internal.feedItForwardInternal.markSetupGenerating, {
     lobbyId: args.lobbyId,
@@ -169,6 +212,7 @@ const generateSetupImageHandler = async (
       playerId: membership.playerId,
       slotIndex: args.slotIndex,
       prompt,
+      promptParts,
       promptEmbedding: embedding,
       imageStorageId: storageId,
       imageMediaType: image.mediaType,
@@ -181,7 +225,13 @@ export const generateSetupImage = action({
   args: {
     lobbyId: v.id("lobbies"),
     slotIndex: v.number(),
-    prompt: v.string(),
+    promptParts: v.object({
+      subject: v.string(),
+      action: v.string(),
+      detail1: v.string(),
+      detail2: v.string(),
+      detail3: v.string(),
+    }),
   },
   handler: generateSetupImageHandler,
 });
@@ -194,7 +244,8 @@ export const generateAutoFillSetupSlot = internalAction({
     slotIndex: v.number(),
   },
   handler: async (ctx, args) => {
-    const prompt = await generatePromptText();
+    const promptParts = await generatePromptParts();
+    const prompt = composeSetupPrompt(promptParts);
     const [image, embedding] = await Promise.all([
       generatePromptImage(prompt),
       generatePromptEmbedding(prompt),
@@ -216,6 +267,7 @@ export const generateAutoFillSetupSlot = internalAction({
         playerId: args.playerId,
         slotIndex: args.slotIndex,
         prompt,
+        promptParts,
         promptEmbedding: embedding,
         imageStorageId: storageId,
         imageMediaType: image.mediaType,

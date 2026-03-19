@@ -242,6 +242,15 @@ const schema = defineSchema({
     slotIndex: v.number(),
     sourceKey: v.string(),
     prompt: v.optional(v.string()),
+    promptParts: v.optional(
+      v.object({
+        subject: v.string(),
+        action: v.string(),
+        detail1: v.string(),
+        detail2: v.string(),
+        detail3: v.string(),
+      }),
+    ),
     promptEmbedding: v.optional(v.array(v.float64())),
     imageStorageId: v.optional(v.id("_storage")),
     imageMediaType: v.optional(v.string()),
