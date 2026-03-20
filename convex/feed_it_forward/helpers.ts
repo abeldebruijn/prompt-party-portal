@@ -1,4 +1,5 @@
-import type { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireViewer } from "../lib/auth";
 import {
@@ -17,6 +18,9 @@ import {
 } from "../lobbies/helpers";
 
 type DbContext = Pick<QueryCtx, "db"> | Pick<MutationCtx, "db">;
+
+const FEED_IT_FORWARD_MOCK_ENABLED = () =>
+  process.env.FEED_IT_FORWARD_MOCK === "1";
 
 export function clampSetupPromptCount(value?: number) {
   if (!Number.isInteger(value) || value === undefined || Number.isNaN(value)) {
@@ -93,6 +97,14 @@ export async function listActiveHumanPlayers(
     .collect();
 
   return players.filter((player) => player.kind === "human").sort(sortPlayers);
+}
+
+export async function listActiveParticipants(
+  ctx: DbContext,
+  lobbyId: Id<"lobbies">,
+) {
+  const players = await listAllActivePlayers(ctx, lobbyId);
+  return players;
 }
 
 export async function listAllActivePlayers(
@@ -241,6 +253,185 @@ export function deriveRoundAssignment(
 
 export function mapVectorScore(score: number) {
   return Math.round(((score + 1) / 2) * 5);
+}
+
+async function maybeCapRoundDeadlineAfterSubmission(
+  ctx: MutationCtx,
+  roundId: Id<"feedItForwardRounds">,
+  participantCount: number,
+) {
+  const round = await ctx.db.get(roundId);
+
+  if (round === null || round.status !== "Playing") {
+    return;
+  }
+
+  const submissions = await listRoundSubmissions(ctx, roundId);
+  const submittedPlayerIds = new Set(
+    submissions.map((submission) => submission.authorPlayerId),
+  );
+
+  if (submittedPlayerIds.size < participantCount) {
+    return;
+  }
+
+  const now = Date.now();
+  const shortenedEndsAt = now + 10_000;
+
+  if (round.endsAt <= shortenedEndsAt) {
+    return;
+  }
+
+  await ctx.db.patch(round._id, {
+    endsAt: shortenedEndsAt,
+  });
+  await ctx.scheduler.runAt(
+    shortenedEndsAt,
+    internal.feedItForwardInternal.handleRoundDeadline,
+    { roundId: round._id },
+  );
+}
+
+export function shouldScheduleRoundSubmissionGeneration() {
+  return !FEED_IT_FORWARD_MOCK_ENABLED();
+}
+
+export async function upsertRoundSubmissionForPlayer(
+  ctx: MutationCtx,
+  args: {
+    lobbyId: Id<"lobbies">;
+    round: Doc<"feedItForwardRounds">;
+    session: Doc<"feedItForwardSessions">;
+    playerId: Id<"lobbyPlayers">;
+    prompt: string;
+    replaceExisting?: boolean;
+  },
+) {
+  const prompt = sanitizePromptInput(args.prompt);
+  const assignment = deriveRoundAssignment(
+    args.session.playerOrderIds,
+    args.round.roundNumber,
+    args.playerId,
+  );
+
+  if (assignment === null) {
+    throw new Error("Your chain assignment could not be resolved.");
+  }
+
+  const chain = await getChain(
+    ctx,
+    args.session._id,
+    assignment.ownerPlayerId,
+    assignment.slotIndex,
+  );
+
+  if (
+    chain === null ||
+    chain.status !== "Ready" ||
+    chain.currentSourceKey === undefined ||
+    chain.currentStepNumber === undefined
+  ) {
+    throw new Error("That chain is not ready yet.");
+  }
+
+  const existingSubmission = await ctx.db
+    .query("feedItForwardSubmissions")
+    .withIndex("roundIdAndAuthorPlayerId", (query) =>
+      query.eq("roundId", args.round._id).eq("authorPlayerId", args.playerId),
+    )
+    .unique();
+
+  if (existingSubmission !== null) {
+    if (args.replaceExisting === false) {
+      return {
+        lobbyId: args.lobbyId,
+        roundId: args.round._id,
+        submissionId: existingSubmission._id,
+        alreadySubmitted: true,
+      };
+    }
+
+    const nextNonce = existingSubmission.latestGenerationNonce + 1;
+
+    await ctx.db.patch(existingSubmission._id, {
+      prompt,
+      submittedAt: Date.now(),
+      latestGenerationNonce: nextNonce,
+      generationStatus: "Generating",
+      promptEmbedding: undefined,
+      imageStorageId: undefined,
+      imageMediaType: undefined,
+      previousSimilarity: undefined,
+      originalSimilarity: undefined,
+      previousScore: undefined,
+      originalScore: undefined,
+      totalScore: undefined,
+      lockedAt: undefined,
+    });
+    if (shouldScheduleRoundSubmissionGeneration()) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.feedItForwardNode.generateRoundSubmissionImage,
+        {
+          submissionId: existingSubmission._id,
+          generationNonce: nextNonce,
+        },
+      );
+    }
+    await maybeCapRoundDeadlineAfterSubmission(
+      ctx,
+      args.round._id,
+      args.session.playerOrderIds.length,
+    );
+
+    return {
+      lobbyId: args.lobbyId,
+      roundId: args.round._id,
+      submissionId: existingSubmission._id,
+      alreadySubmitted: false,
+    };
+  }
+
+  const submissionId = await ctx.db.insert("feedItForwardSubmissions", {
+    sessionId: args.session._id,
+    roundId: args.round._id,
+    lobbyId: args.lobbyId,
+    roundNumber: args.round.roundNumber,
+    authorPlayerId: args.playerId,
+    ownerPlayerId: assignment.ownerPlayerId,
+    slotIndex: assignment.slotIndex,
+    sourceKey: deriveSubmissionSourceKey(args.round._id, args.playerId),
+    previousSourceKey: chain.currentSourceKey,
+    originalSourceKey: chain.originalSourceKey,
+    previousStepNumber: chain.currentStepNumber,
+    prompt,
+    submittedAt: Date.now(),
+    latestGenerationNonce: 1,
+    generationStatus: "Generating",
+  });
+
+  if (shouldScheduleRoundSubmissionGeneration()) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.feedItForwardNode.generateRoundSubmissionImage,
+      {
+        submissionId,
+        generationNonce: 1,
+      },
+    );
+  }
+  await maybeCapRoundDeadlineAfterSubmission(
+    ctx,
+    args.round._id,
+    args.session.playerOrderIds.length,
+  );
+
+  return {
+    lobbyId: args.lobbyId,
+    roundId: args.round._id,
+    submissionId,
+    alreadySubmitted: false,
+  };
 }
 
 export async function computeLeaderboard(

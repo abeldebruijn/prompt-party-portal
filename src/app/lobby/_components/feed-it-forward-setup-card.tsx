@@ -5,6 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { Loader2Icon, SparklesIcon } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SurfaceCard, SurfaceCardTitle } from "@/components/ui/surface-card";
 import { api, type Id } from "@/lib/convex";
@@ -99,8 +100,20 @@ export function FeedItForwardSetupCard({
               key={player.playerId}
               className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/10 px-3 py-2 text-sm"
             >
-              <span>{player.displayName}</span>
-              <span className="font-mono text-foreground/65">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate">{player.displayName}</span>
+                {player.kind === "ai" ? (
+                  <Badge className="rounded-full border border-foreground/15 bg-background/75 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.18em] text-foreground/70 hover:bg-background/75">
+                    AI
+                  </Badge>
+                ) : null}
+                {player.generatingSlotCount > 0 ? (
+                  <span className="text-xs text-foreground/55">
+                    Generating {player.generatingSlotCount}
+                  </span>
+                ) : null}
+              </div>
+              <span className="shrink-0 font-mono text-foreground/65">
                 {player.completedSlotCount}/{snapshot.settings.setupPromptCount}
               </span>
             </div>

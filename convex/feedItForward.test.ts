@@ -74,6 +74,23 @@ async function createFeedLobby(t: TestBackend) {
   };
 }
 
+async function addAiPlayer(
+  hostClient: Awaited<ReturnType<typeof createViewer>>["client"],
+  lobbyId: Id<"lobbies">,
+  options: {
+    displayName?: string;
+    personalityType?: "roasting" | "complimenting" | "custom";
+    customPrompt?: string;
+  } = {},
+) {
+  return await hostClient.mutation(api.lobbies.addAiPlayer, {
+    lobbyId,
+    displayName: options.displayName,
+    personalityType: options.personalityType ?? "complimenting",
+    customPrompt: options.customPrompt,
+  });
+}
+
 async function seedFinalizedSetupSlot(
   t: TestBackend,
   args: {
@@ -681,5 +698,205 @@ describe("convex/feedItForward", () => {
     expect(completed.session?.status).toBe("Completed");
     expect(completed.completion).toBeTruthy();
     expect(completed.waiting).toBeNull();
+  });
+
+  it("includes AI players in setup progress and session order", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-20T09:00:00.000Z"));
+
+    const t = createConvexTest();
+    const { host, lobbyId, playerId: hostPlayerId } = await createFeedLobby(t);
+    const aiPlayer = await addAiPlayer(host.client, lobbyId, {
+      displayName: "Bot Berry",
+      personalityType: "complimenting",
+    });
+
+    await t.finishAllScheduledFunctions(() => {
+      vi.runAllTimers();
+      vi.setSystemTime(Date.now());
+    });
+
+    const setupState = await host.client.query(
+      api.feedItForward.getSetupState,
+      {
+        lobbyId,
+      },
+    );
+    const aiProgress = setupState.players.find(
+      (player) => player.playerId === aiPlayer.playerId,
+    );
+
+    expect(setupState.settings.totalRounds).toBe(2);
+    expect(aiProgress?.kind).toBe("ai");
+    expect(aiProgress?.completedSlotCount).toBe(2);
+    expect(aiProgress?.generatingSlotCount).toBe(0);
+
+    await seedFinalizedSetupSlot(t, {
+      lobbyId,
+      playerId: hostPlayerId,
+      slotIndex: 0,
+      prompt: "Host seed 1",
+    });
+    await seedFinalizedSetupSlot(t, {
+      lobbyId,
+      playerId: hostPlayerId,
+      slotIndex: 1,
+      prompt: "Host seed 2",
+    });
+
+    await host.client.mutation(api.feedItForward.startGame, { lobbyId });
+
+    const started = await host.client.query(api.feedItForward.getGameState, {
+      lobbyId,
+    });
+
+    expect(started.session?.playerOrderIds).toContain(aiPlayer.playerId);
+    expect(started.settings.totalRounds).toBe(2);
+    expect(started.round?.roundNumber).toBe(1);
+  });
+
+  it("queues AI setup after switching to Feed It Forward and when increasing setup count", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-20T09:30:00.000Z"));
+
+    const t = createConvexTest();
+    const host = await createViewer(t, {
+      name: "Host Person",
+      hasPasswordAccount: true,
+    });
+    const created = await host.client.mutation(api.lobbies.createLobby, {});
+    const aiPlayer = await addAiPlayer(host.client, created.lobbyId, {
+      displayName: "Switch Bot",
+    });
+
+    await host.client.mutation(api.lobbies.selectGame, {
+      lobbyId: created.lobbyId,
+      game: FEED_IT_FORWARD_GAME_NAME,
+    });
+
+    await t.finishAllScheduledFunctions(() => {
+      vi.runAllTimers();
+      vi.setSystemTime(Date.now());
+    });
+
+    let setupState = await host.client.query(api.feedItForward.getSetupState, {
+      lobbyId: created.lobbyId,
+    });
+    let aiProgress = setupState.players.find(
+      (player) => player.playerId === aiPlayer.playerId,
+    );
+
+    expect(aiProgress?.completedSlotCount).toBe(2);
+
+    await host.client.mutation(api.feedItForward.updateSettings, {
+      lobbyId: created.lobbyId,
+      setupPromptCount: 3,
+      roundDurationSeconds: 45,
+    });
+
+    await t.finishAllScheduledFunctions(() => {
+      vi.runAllTimers();
+      vi.setSystemTime(Date.now());
+    });
+
+    setupState = await host.client.query(api.feedItForward.getSetupState, {
+      lobbyId: created.lobbyId,
+    });
+    aiProgress = setupState.players.find(
+      (player) => player.playerId === aiPlayer.playerId,
+    );
+
+    expect(aiProgress?.completedSlotCount).toBe(3);
+
+    const aiSlots = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("feedItForwardSetupSlots")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", created.lobbyId))
+        .filter((query) => query.eq(query.field("playerId"), aiPlayer.playerId))
+        .collect();
+    });
+
+    expect(aiSlots).toHaveLength(3);
+    expect(aiSlots.every((slot) => slot.finalizedAt !== undefined)).toBe(true);
+  });
+
+  it("auto-submits AI round prompts during play", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-20T10:00:00.000Z"));
+
+    const t = createConvexTest();
+    const { host, lobbyId, playerId: hostPlayerId } = await createFeedLobby(t);
+    const aiPlayer = await addAiPlayer(host.client, lobbyId, {
+      displayName: "Tone Bot",
+      personalityType: "custom",
+      customPrompt: "slightly dramatic but still clear",
+    });
+
+    await host.client.mutation(api.feedItForward.updateSettings, {
+      lobbyId,
+      setupPromptCount: 1,
+      roundDurationSeconds: 45,
+    });
+    await seedFinalizedSetupSlot(t, {
+      lobbyId,
+      playerId: hostPlayerId,
+      slotIndex: 0,
+      prompt: "Host seed 1",
+    });
+
+    await t.finishAllScheduledFunctions(() => {
+      vi.runAllTimers();
+      vi.setSystemTime(Date.now());
+    });
+
+    await host.client.mutation(api.feedItForward.startGame, { lobbyId });
+
+    vi.advanceTimersByTime(1_000);
+    vi.setSystemTime(Date.now());
+    await t.finishInProgressScheduledFunctions();
+    await t.finishInProgressScheduledFunctions();
+
+    const gameState = await host.client.query(api.feedItForward.getGameState, {
+      lobbyId,
+    });
+    const aiProgress = gameState.round?.progress.find(
+      (entry) => entry.playerId === aiPlayer.playerId,
+    );
+
+    expect(aiProgress?.state).toBe("Submitted");
+
+    const aiSubmission = await t.run(async (ctx) => {
+      const session = await ctx.db
+        .query("feedItForwardSessions")
+        .withIndex("lobbyId", (query) => query.eq("lobbyId", lobbyId))
+        .first();
+
+      if (session === null) {
+        return null;
+      }
+
+      const round = await ctx.db
+        .query("feedItForwardRounds")
+        .withIndex("sessionIdAndRoundNumber", (query) =>
+          query.eq("sessionId", session._id).eq("roundNumber", 1),
+        )
+        .unique();
+
+      if (round === null) {
+        return null;
+      }
+
+      return await ctx.db
+        .query("feedItForwardSubmissions")
+        .withIndex("roundIdAndAuthorPlayerId", (query) =>
+          query
+            .eq("roundId", round._id)
+            .eq("authorPlayerId", aiPlayer.playerId),
+        )
+        .unique();
+    });
+
+    expect(aiSubmission?.prompt).toBeTruthy();
+    expect(aiSubmission?.authorPlayerId).toBe(aiPlayer.playerId);
   });
 });

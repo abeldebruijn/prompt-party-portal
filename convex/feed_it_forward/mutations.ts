@@ -1,67 +1,21 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { type MutationCtx, mutation } from "../_generated/server";
-import { FEED_IT_FORWARD_ALL_SUBMITTED_ROUND_CAP_MS } from "./constants";
+import { mutation } from "../_generated/server";
 import {
   clampRoundDurationSeconds,
   clampSetupPromptCount,
-  deriveRoundAssignment,
-  deriveSubmissionSourceKey,
   deriveTotalRoundCount,
   ensureSetupSlot,
   getActiveSession,
-  getChain,
   getCurrentRound,
   getSetupSlot,
-  listActiveHumanPlayers,
-  listRoundSubmissions,
+  listActiveParticipants,
   listSetupSlots,
   requireFeedItForwardHost,
   requireFeedItForwardMembership,
-  sanitizePromptInput,
+  upsertRoundSubmissionForPlayer,
 } from "./helpers";
-
-async function maybeCapRoundDeadlineAfterSubmission(
-  ctx: MutationCtx,
-  roundId: Id<"feedItForwardRounds">,
-  participantCount: number,
-) {
-  const round = await ctx.db.get(roundId);
-
-  if (round === null || round.status !== "Playing") {
-    return;
-  }
-
-  const submissions = await listRoundSubmissions(ctx, roundId);
-  const submittedPlayerIds = new Set(
-    submissions.map((submission) => submission.authorPlayerId),
-  );
-
-  if (submittedPlayerIds.size < participantCount) {
-    return;
-  }
-
-  const now = Date.now();
-  const shortenedEndsAt = now + FEED_IT_FORWARD_ALL_SUBMITTED_ROUND_CAP_MS;
-
-  if (round.endsAt <= shortenedEndsAt) {
-    return;
-  }
-
-  await ctx.db.patch(round._id, {
-    endsAt: shortenedEndsAt,
-  });
-  await ctx.scheduler.runAt(
-    shortenedEndsAt,
-    internal.feedItForwardInternal.handleRoundDeadline,
-    { roundId: round._id },
-  );
-}
-
-function shouldScheduleRoundSubmissionGeneration() {
-  return process.env.FEED_IT_FORWARD_MOCK !== "1";
-}
 
 export const updateSettings = mutation({
   args: {
@@ -96,6 +50,14 @@ export const updateSettings = mutation({
       feedItForwardRoundDurationSeconds: roundDurationSeconds,
       lastActivityAt: Date.now(),
     });
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.feedItForwardInternal.schedulePendingAiSetupDuringCreation,
+      {
+        lobbyId: args.lobbyId,
+      },
+    );
 
     return {
       lobbyId: lobby._id,
@@ -160,11 +122,11 @@ export const startGame = mutation({
       throw new Error("Only lobbies in setup mode can start Feed It Forward.");
     }
 
-    const players = await listActiveHumanPlayers(ctx, args.lobbyId);
+    const players = await listActiveParticipants(ctx, args.lobbyId);
 
     if (players.length < 2) {
       throw new Error(
-        "At least two active human players are required for Feed It Forward.",
+        "At least two active players are required for Feed It Forward.",
       );
     }
 
@@ -320,120 +282,13 @@ export const submitPrompt = mutation({
       throw new Error("The round timer has already ended.");
     }
 
-    const assignment = deriveRoundAssignment(
-      session.playerOrderIds,
-      round.roundNumber,
-      membership.player._id,
-    );
-
-    if (assignment === null) {
-      throw new Error("Your chain assignment could not be resolved.");
-    }
-
-    const chain = await getChain(
-      ctx,
-      session._id,
-      assignment.ownerPlayerId,
-      assignment.slotIndex,
-    );
-
-    if (
-      chain === null ||
-      chain.status !== "Ready" ||
-      chain.currentSourceKey === undefined ||
-      chain.currentStepNumber === undefined
-    ) {
-      throw new Error("That chain is not ready yet.");
-    }
-
-    const prompt = sanitizePromptInput(args.prompt);
-    const existingSubmission = await ctx.db
-      .query("feedItForwardSubmissions")
-      .withIndex("roundIdAndAuthorPlayerId", (query) =>
-        query
-          .eq("roundId", round._id)
-          .eq("authorPlayerId", membership.player._id),
-      )
-      .unique();
-
-    if (existingSubmission !== null) {
-      const nextNonce = existingSubmission.latestGenerationNonce + 1;
-
-      await ctx.db.patch(existingSubmission._id, {
-        prompt,
-        submittedAt: Date.now(),
-        latestGenerationNonce: nextNonce,
-        generationStatus: "Generating",
-        promptEmbedding: undefined,
-        imageStorageId: undefined,
-        imageMediaType: undefined,
-        previousSimilarity: undefined,
-        originalSimilarity: undefined,
-        previousScore: undefined,
-        originalScore: undefined,
-        totalScore: undefined,
-      });
-      if (shouldScheduleRoundSubmissionGeneration()) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.feedItForwardNode.generateRoundSubmissionImage,
-          {
-            submissionId: existingSubmission._id,
-            generationNonce: nextNonce,
-          },
-        );
-      }
-      await maybeCapRoundDeadlineAfterSubmission(
-        ctx,
-        round._id,
-        session.playerOrderIds.length,
-      );
-
-      return {
-        lobbyId: args.lobbyId,
-        roundId: round._id,
-        submissionId: existingSubmission._id,
-      };
-    }
-
-    const submissionId = await ctx.db.insert("feedItForwardSubmissions", {
-      sessionId: session._id,
-      roundId: round._id,
+    return await upsertRoundSubmissionForPlayer(ctx, {
       lobbyId: args.lobbyId,
-      roundNumber: round.roundNumber,
-      authorPlayerId: membership.player._id,
-      ownerPlayerId: assignment.ownerPlayerId,
-      slotIndex: assignment.slotIndex,
-      sourceKey: deriveSubmissionSourceKey(round._id, membership.player._id),
-      previousSourceKey: chain.currentSourceKey,
-      originalSourceKey: chain.originalSourceKey,
-      previousStepNumber: chain.currentStepNumber,
-      prompt,
-      submittedAt: Date.now(),
-      latestGenerationNonce: 1,
-      generationStatus: "Generating",
+      round,
+      session,
+      playerId: membership.player._id,
+      prompt: args.prompt,
+      replaceExisting: true,
     });
-
-    if (shouldScheduleRoundSubmissionGeneration()) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.feedItForwardNode.generateRoundSubmissionImage,
-        {
-          submissionId,
-          generationNonce: 1,
-        },
-      );
-    }
-    await maybeCapRoundDeadlineAfterSubmission(
-      ctx,
-      round._id,
-      session.playerOrderIds.length,
-    );
-
-    return {
-      lobbyId: args.lobbyId,
-      roundId: round._id,
-      submissionId,
-    };
   },
 });

@@ -12,6 +12,7 @@ import {
   FEED_IT_FORWARD_IMAGE_MODEL,
   FEED_IT_FORWARD_PROMPT_WRITER_INSTRUCTIONS,
   FEED_IT_FORWARD_TEXT_MODEL,
+  FEED_IT_FORWARD_VISION_MODEL,
 } from "./feed_it_forward/constants";
 import { mapVectorScore } from "./feed_it_forward/helpers";
 
@@ -155,6 +156,87 @@ async function uploadGeneratedImage(
   return json.storageId as Id<"_storage">;
 }
 
+async function storeGeneratedImage(
+  ctx: ActionCtx,
+  mediaType: string,
+  body: Uint8Array,
+) {
+  if (process.env.FEED_IT_FORWARD_MOCK === "1") {
+    return await ctx.storage.store(
+      new Blob([Buffer.from(body)], { type: mediaType }),
+    );
+  }
+
+  const uploadUrl = await ctx.runMutation(
+    internal.feedItForwardInternal.generateUploadUrl,
+    {},
+  );
+  return await uploadGeneratedImage(uploadUrl, mediaType, body);
+}
+
+function buildAiPromptTone(
+  personalityType: "roasting" | "complimenting" | "custom",
+  customPrompt: string | null,
+) {
+  switch (personalityType) {
+    case "roasting":
+      return "Use a lightly teasing, smug tone, but keep the prompt usable for image generation.";
+    case "custom":
+      return customPrompt
+        ? `Lightly reflect this personality without harming gameplay clarity: ${customPrompt}`
+        : "Keep the tone lightly distinctive, but gameplay clarity comes first.";
+    default:
+      return "Use a lightly warm, delighted tone, but keep the prompt usable for image generation.";
+  }
+}
+
+async function generateAiRoundPrompt(args: {
+  imageData: Uint8Array;
+  mediaType: string;
+  sourcePrompt: string;
+  playerDisplayName: string;
+  personalityType: "roasting" | "complimenting" | "custom";
+  customPrompt: string | null;
+}) {
+  if (process.env.FEED_IT_FORWARD_MOCK === "1") {
+    const tonePrefix =
+      args.personalityType === "roasting"
+        ? "A cheeky"
+        : args.personalityType === "custom"
+          ? "A curious"
+          : "A delightful";
+    return `${tonePrefix} impossible scene guessed by ${args.playerDisplayName}: ${args.sourcePrompt}`;
+  }
+
+  const { text } = await generateText({
+    model: FEED_IT_FORWARD_VISION_MODEL,
+    system: `You are playing Feed It Forward as an AI Player.
+Infer the original image-generation prompt from the source image.
+Return exactly one vivid sentence between 12 and 40 words.
+Describe an impossible, whimsical scene suitable for image generation.
+Do not mention ratings, games, prompts, judges, players, or that you are looking at an image.
+${buildAiPromptTone(args.personalityType, args.customPrompt)}`,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `Guess the hidden prompt for this source image. Preserve the core scene if possible, but it is okay if details drift. Keep it concise and visual.`,
+          },
+          {
+            type: "image",
+            image: args.imageData,
+            mediaType: args.mediaType,
+          },
+        ],
+      },
+    ],
+  });
+
+  return text.trim().replace(/\s+/g, " ").slice(0, 240);
+}
+
 export const generateSetupPrompt = action({
   args: {},
   handler: async () => {
@@ -195,12 +277,8 @@ const generateSetupImageHandler = async (
     generatePromptImage(prompt),
     generatePromptEmbedding(prompt),
   ]);
-  const uploadUrl = await ctx.runMutation(
-    internal.feedItForwardInternal.generateUploadUrl,
-    {},
-  );
-  const storageId = await uploadGeneratedImage(
-    uploadUrl,
+  const storageId = await storeGeneratedImage(
+    ctx,
     image.mediaType,
     image.uint8Array,
   );
@@ -250,12 +328,8 @@ export const generateAutoFillSetupSlot = internalAction({
       generatePromptImage(prompt),
       generatePromptEmbedding(prompt),
     ]);
-    const uploadUrl = await ctx.runMutation(
-      internal.feedItForwardInternal.generateUploadUrl,
-      {},
-    );
-    const storageId = await uploadGeneratedImage(
-      uploadUrl,
+    const storageId = await storeGeneratedImage(
+      ctx,
       image.mediaType,
       image.uint8Array,
     );
@@ -280,6 +354,51 @@ export const generateAutoFillSetupSlot = internalAction({
         sessionId: args.sessionId,
         playerId: args.playerId,
         slotIndex: args.slotIndex,
+      },
+    );
+  },
+});
+
+export const generateCreationAiSetupSlot = internalAction({
+  args: {
+    lobbyId: v.id("lobbies"),
+    playerId: v.id("lobbyPlayers"),
+    slotIndex: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const payload = await ctx.runQuery(
+      internal.feedItForwardInternal.getCreationAiSetupPayload,
+      args,
+    );
+
+    if (payload === null) {
+      return;
+    }
+
+    const promptParts = await generatePromptParts();
+    const prompt = composeSetupPrompt(promptParts);
+    const [image, embedding] = await Promise.all([
+      generatePromptImage(prompt),
+      generatePromptEmbedding(prompt),
+    ]);
+    const storageId = await storeGeneratedImage(
+      ctx,
+      image.mediaType,
+      image.uint8Array,
+    );
+
+    await ctx.runMutation(
+      internal.feedItForwardInternal.storeSetupGenerationResult,
+      {
+        lobbyId: payload.lobbyId,
+        playerId: payload.playerId,
+        slotIndex: payload.slotIndex,
+        prompt,
+        promptParts,
+        promptEmbedding: embedding,
+        imageStorageId: storageId,
+        imageMediaType: image.mediaType,
+        isAutoFilled: true,
       },
     );
   },
@@ -312,12 +431,8 @@ const generateRoundSubmissionImageHandler = async (
     generatePromptImage(payload.prompt),
     generatePromptEmbedding(payload.prompt),
   ]);
-  const uploadUrl = await ctx.runMutation(
-    internal.feedItForwardInternal.generateUploadUrl,
-    {},
-  );
-  const storageId = await uploadGeneratedImage(
-    uploadUrl,
+  const storageId = await storeGeneratedImage(
+    ctx,
     image.mediaType,
     image.uint8Array,
   );
@@ -356,4 +471,43 @@ export const generateRoundSubmissionImage = internalAction({
     generationNonce: v.number(),
   },
   handler: generateRoundSubmissionImageHandler,
+});
+
+export const generateAiRoundSubmission = internalAction({
+  args: {
+    lobbyId: v.id("lobbies"),
+    roundId: v.id("feedItForwardRounds"),
+    playerId: v.id("lobbyPlayers"),
+  },
+  handler: async (ctx, args) => {
+    const payload = await ctx.runQuery(
+      internal.feedItForwardInternal.getAiRoundSubmissionPayload,
+      args,
+    );
+
+    if (payload === null) {
+      return;
+    }
+
+    const sourceImage = await ctx.storage.get(payload.sourceImageStorageId);
+
+    if (sourceImage === null) {
+      return;
+    }
+
+    const prompt = await generateAiRoundPrompt({
+      imageData: new Uint8Array(await sourceImage.arrayBuffer()),
+      mediaType: payload.sourceImageMediaType,
+      sourcePrompt: payload.sourcePrompt,
+      playerDisplayName: payload.playerDisplayName,
+      personalityType: payload.personalityType,
+      customPrompt: payload.customPrompt,
+    });
+
+    await ctx.runMutation(internal.feedItForwardInternal.submitPromptAsPlayer, {
+      lobbyId: payload.lobbyId,
+      playerId: payload.playerId,
+      prompt,
+    });
+  },
 });

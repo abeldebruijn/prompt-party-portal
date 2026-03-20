@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { mutation } from "../_generated/server";
 import {
@@ -12,6 +13,7 @@ import {
   DEFAULT_LOBBY_GAME,
   DEFAULT_TEXT_GAME_ROUND_COUNT,
   DEPRECATED_IMAGE_GENERATION_GAME_NAME,
+  FEED_IT_FORWARD_GAME_NAME,
   generateFunnyUsername,
   lobbyGameValidator,
   sanitizeSummary,
@@ -200,6 +202,16 @@ export const selectGame = mutation({
       lastActivityAt: Date.now(),
     });
 
+    if (args.game === FEED_IT_FORWARD_GAME_NAME) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.feedItForwardInternal.schedulePendingAiSetupDuringCreation,
+        {
+          lobbyId: args.lobbyId,
+        },
+      );
+    }
+
     return {
       lobbyId: lobby._id,
       selectedGame: args.game,
@@ -300,6 +312,16 @@ export const addAiPlayer = mutation({
     });
 
     await ctx.db.patch(lobby._id, { lastActivityAt: now });
+
+    if (lobby.selectedGame === FEED_IT_FORWARD_GAME_NAME) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.feedItForwardInternal.schedulePendingAiSetupDuringCreation,
+        {
+          lobbyId: args.lobbyId,
+        },
+      );
+    }
 
     return {
       lobbyId: lobby._id,
