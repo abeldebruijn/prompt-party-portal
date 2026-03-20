@@ -37,6 +37,57 @@ const setupPromptPartsSchema = z.object({
 
 type SetupPromptParts = z.infer<typeof setupPromptPartsSchema>;
 
+function decodeBase64(base64: string) {
+  const binary = atob(base64);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+const FEED_IT_FORWARD_ANIMALS = [
+  "otter",
+  "penguin",
+  "fox",
+  "raccoon",
+  "flamingo",
+  "koala",
+  "octopus",
+  "panther",
+  "llama",
+  "parrot",
+  "hedgehog",
+  "seal",
+  "wolf",
+  "peacock",
+  "gecko",
+  "yak",
+  "lobster",
+  "hamster",
+  "meerkat",
+  "toucan",
+] as const;
+
+const FEED_IT_FORWARD_OBJECTS = [
+  "teapot",
+  "lantern",
+  "typewriter",
+  "skateboard",
+  "accordion",
+  "telescope",
+  "umbrella",
+  "clock",
+  "backpack",
+  "crown",
+  "rocket",
+  "snow globe",
+  "violin",
+  "kettle",
+  "helmet",
+  "suitcase",
+  "disco ball",
+  "camera",
+  "bookcase",
+  "carousel",
+] as const;
+
 function normalizePromptPart(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, 120);
 }
@@ -57,7 +108,9 @@ function composeSetupPrompt(promptParts: SetupPromptParts) {
 }
 
 function deterministicEmbedding(input: string) {
-  const values = new Array<number>(FEED_IT_FORWARD_EMBEDDING_DIMENSIONS);
+  const values = Array.from<number>({
+    length: FEED_IT_FORWARD_EMBEDDING_DIMENSIONS,
+  }).fill(0);
   let seed = 2166136261;
 
   for (const character of input) {
@@ -87,9 +140,12 @@ async function generatePromptEmbedding(prompt: string) {
 }
 
 async function generatePromptParts() {
+  const subjectPool = [...FEED_IT_FORWARD_ANIMALS, ...FEED_IT_FORWARD_OBJECTS];
+  const subject = subjectPool[Math.floor(Math.random() * subjectPool.length)];
+
   if (process.env.FEED_IT_FORWARD_MOCK === "1") {
     return setupPromptPartsSchema.parse({
-      subject: "A velvet otter orchestra",
+      subject: `A velvet ${subject}`,
       action: "sails across a lemon thunderstorm",
       detail1: "mirror-bright boots",
       detail2: "mint lanterns",
@@ -100,26 +156,33 @@ async function generatePromptParts() {
   const { output } = await generateText({
     model: FEED_IT_FORWARD_TEXT_MODEL,
     output: Output.object({
-      schema: setupPromptPartsSchema,
+      schema: setupPromptPartsSchema.omit({ subject: true }),
     }),
     prompt: `${FEED_IT_FORWARD_PROMPT_WRITER_INSTRUCTIONS}
 
+The subject has already been chosen. Use this exact subject phrase and do not replace it:
+- subject: A whimsical ${subject}
+
 Return an object with exactly these fields:
-- subject: the animal or object
 - action: what it does
 - detail1
 - detail2
-- detail3`,
+- detail3
+
+Keep the action and details compatible with the fixed subject.`,
   });
 
-  return normalizeSetupPromptParts(output);
+  return normalizeSetupPromptParts({
+    subject: `A whimsical ${subject}`,
+    ...output,
+  });
 }
 
 async function generatePromptImage(prompt: string) {
   if (process.env.FEED_IT_FORWARD_MOCK === "1") {
     return {
       mediaType: "image/png",
-      uint8Array: Buffer.from(TEST_PNG_BASE64, "base64"),
+      uint8Array: decodeBase64(TEST_PNG_BASE64),
     };
   }
 
@@ -131,7 +194,7 @@ async function generatePromptImage(prompt: string) {
 
   return {
     mediaType: result.image.mediaType,
-    uint8Array: Buffer.from(result.image.uint8Array),
+    uint8Array: new Uint8Array(result.image.uint8Array),
   };
 }
 
@@ -145,7 +208,7 @@ async function uploadGeneratedImage(
     headers: {
       "Content-Type": mediaType,
     },
-    body: Buffer.from(body),
+    body,
   });
 
   if (!response.ok) {
@@ -162,9 +225,7 @@ async function storeGeneratedImage(
   body: Uint8Array,
 ) {
   if (process.env.FEED_IT_FORWARD_MOCK === "1") {
-    return await ctx.storage.store(
-      new Blob([Buffer.from(body)], { type: mediaType }),
-    );
+    return await ctx.storage.store(new Blob([body], { type: mediaType }));
   }
 
   const uploadUrl = await ctx.runMutation(
