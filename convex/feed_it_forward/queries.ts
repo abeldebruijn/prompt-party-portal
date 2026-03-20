@@ -33,13 +33,7 @@ export const getSetupState = query({
     const roundDurationSeconds = clampRoundDurationSeconds(
       membership.lobby.feedItForwardRoundDurationSeconds,
     );
-    const activeHumanPlayers = players.filter(
-      (player) => player.kind === "human",
-    );
-    const totalRounds = deriveTotalRoundCount(
-      activeHumanPlayers.length,
-      setupPromptCount,
-    );
+    const totalRounds = deriveTotalRoundCount(players.length, setupPromptCount);
 
     return {
       lobby: membership.lobby,
@@ -52,12 +46,17 @@ export const getSetupState = query({
         roundDurationSeconds,
         totalRounds,
       },
-      players: activeHumanPlayers.map((player) => ({
+      players: players.map((player) => ({
         playerId: player._id,
         displayName: player.displayName,
+        kind: player.kind,
         completedSlotCount: setupSlots.filter(
           (slot) =>
             slot.playerId === player._id && slot.finalizedAt !== undefined,
+        ).length,
+        generatingSlotCount: setupSlots.filter(
+          (slot) =>
+            slot.playerId === player._id && slot.status === "Generating",
         ).length,
       })),
       viewerSlots: await Promise.all(
@@ -116,7 +115,7 @@ export const getGameState = query({
           setupPromptCount,
           roundDurationSeconds,
           totalRounds: deriveTotalRoundCount(
-            activePlayers.filter((player) => player.kind === "human").length,
+            activePlayers.length,
             setupPromptCount,
           ),
         },

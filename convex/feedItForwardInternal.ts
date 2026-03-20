@@ -9,14 +9,22 @@ import {
 } from "./_generated/server";
 import { FEED_IT_FORWARD_MINIMUM_INTER_ROUND_WAIT_MS } from "./feed_it_forward/constants";
 import {
+  clampSetupPromptCount,
   computeLeaderboard,
+  deriveRoundAssignment,
   deriveSessionSummary,
+  getActiveSession,
   getChain,
+  getCurrentRound,
   getSetupSlot,
+  listAllActivePlayers,
   listRoundSubmissions,
   listSessionChains,
+  listSetupSlots,
   requireFeedItForwardMembership,
+  upsertRoundSubmissionForPlayer,
 } from "./feed_it_forward/helpers";
+import { FEED_IT_FORWARD_GAME_NAME } from "./lib/lobby";
 
 function countLockedPendingImages(
   submissions: Awaited<ReturnType<typeof listRoundSubmissions>>,
@@ -30,6 +38,106 @@ function countLockedPendingImages(
 
 function hasMinimumWaitElapsed(round: Doc<"feedItForwardRounds">, now: number) {
   return round.waitEndsAt === undefined || now >= round.waitEndsAt;
+}
+
+async function scheduleAiRoundSubmissions(
+  ctx: MutationCtx,
+  session: Doc<"feedItForwardSessions">,
+  roundId: Id<"feedItForwardRounds">,
+) {
+  const participants = await Promise.all(
+    session.playerOrderIds.map((playerId) => ctx.db.get(playerId)),
+  );
+  const aiPlayers = participants.flatMap((player) =>
+    player?.isActive && player.kind === "ai" ? [player] : [],
+  );
+
+  for (const [index, player] of aiPlayers.entries()) {
+    await ctx.scheduler.runAfter(
+      300 + index * 350,
+      internal.feedItForwardNode.generateAiRoundSubmission,
+      {
+        lobbyId: session.lobbyId,
+        roundId,
+        playerId: player._id,
+      },
+    );
+  }
+}
+
+async function queuePendingAiSetupDuringCreation(
+  ctx: MutationCtx,
+  lobbyId: Id<"lobbies">,
+) {
+  const lobby = await ctx.db.get(lobbyId);
+
+  if (
+    lobby === null ||
+    lobby.state !== "Creation" ||
+    lobby.selectedGame !== FEED_IT_FORWARD_GAME_NAME
+  ) {
+    return { scheduledCount: 0 };
+  }
+
+  const [players, setupSlots] = await Promise.all([
+    listAllActivePlayers(ctx, lobbyId),
+    listSetupSlots(ctx, lobbyId),
+  ]);
+  const setupPromptCount = clampSetupPromptCount(
+    lobby.feedItForwardSetupPromptCount,
+  );
+  let scheduledCount = 0;
+
+  for (const player of players) {
+    if (player.kind !== "ai") {
+      continue;
+    }
+
+    for (let slotIndex = 0; slotIndex < setupPromptCount; slotIndex += 1) {
+      const slot =
+        setupSlots.find(
+          (entry) =>
+            entry.playerId === player._id && entry.slotIndex === slotIndex,
+        ) ?? null;
+
+      const isReady =
+        slot !== null &&
+        slot.status === "Ready" &&
+        slot.prompt !== undefined &&
+        slot.promptEmbedding !== undefined &&
+        slot.imageStorageId !== undefined &&
+        slot.imageMediaType !== undefined &&
+        slot.finalizedAt !== undefined;
+
+      if (isReady || slot?.status === "Generating") {
+        continue;
+      }
+
+      const ensuredSlot = await ensureSlotForMutation(ctx, {
+        lobbyId,
+        playerId: player._id,
+        slotIndex,
+        isAutoFilled: true,
+      });
+      await ctx.db.patch(ensuredSlot._id, {
+        status: "Generating",
+        isAutoFilled: true,
+        updatedAt: Date.now(),
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.feedItForwardNode.generateCreationAiSetupSlot,
+        {
+          lobbyId,
+          playerId: player._id,
+          slotIndex,
+        },
+      );
+      scheduledCount += 1;
+    }
+  }
+
+  return { scheduledCount };
 }
 
 async function startNextRound(
@@ -66,6 +174,7 @@ async function startNextRound(
     internal.feedItForwardInternal.handleRoundDeadline,
     { roundId: nextRoundId },
   );
+  await scheduleAiRoundSubmissions(ctx, session, nextRoundId);
 }
 
 async function upsertStepZeroFromSetupSlot(
@@ -164,6 +273,7 @@ async function maybeStartFirstRound(
       roundId,
     },
   );
+  await scheduleAiRoundSubmissions(ctx, session, roundId);
 }
 
 async function maybeAdvanceAfterWaiting(
@@ -315,6 +425,15 @@ async function queryMembership(ctx: QueryCtx, lobbyId: Id<"lobbies">) {
   return await requireFeedItForwardMembership(ctx, lobbyId);
 }
 
+export const schedulePendingAiSetupDuringCreation = internalMutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+  },
+  handler: async (ctx, args) => {
+    return await queuePendingAiSetupDuringCreation(ctx, args.lobbyId);
+  },
+});
+
 export const markSetupGenerating = internalMutation({
   args: {
     lobbyId: v.id("lobbies"),
@@ -330,6 +449,49 @@ export const markSetupGenerating = internalMutation({
       isAutoFilled: args.isAutoFilled,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const getCreationAiSetupPayload = internalQuery({
+  args: {
+    lobbyId: v.id("lobbies"),
+    playerId: v.id("lobbyPlayers"),
+    slotIndex: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const [lobby, player] = await Promise.all([
+      ctx.db.get(args.lobbyId),
+      ctx.db.get(args.playerId),
+    ]);
+
+    if (
+      lobby === null ||
+      lobby.state !== "Creation" ||
+      lobby.selectedGame !== FEED_IT_FORWARD_GAME_NAME ||
+      player === null ||
+      player.lobbyId !== args.lobbyId ||
+      !player.isActive ||
+      player.kind !== "ai"
+    ) {
+      return null;
+    }
+
+    const slot = await getSetupSlot(
+      ctx,
+      args.lobbyId,
+      args.playerId,
+      args.slotIndex,
+    );
+
+    if (slot?.status === "Generating") {
+      return {
+        lobbyId: args.lobbyId,
+        playerId: args.playerId,
+        slotIndex: args.slotIndex,
+      };
+    }
+
+    return null;
   },
 });
 
@@ -479,6 +641,146 @@ export const getSubmissionGenerationPayload = internalQuery({
   },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.submissionId);
+  },
+});
+
+export const getAiRoundSubmissionPayload = internalQuery({
+  args: {
+    lobbyId: v.id("lobbies"),
+    roundId: v.id("feedItForwardRounds"),
+    playerId: v.id("lobbyPlayers"),
+  },
+  handler: async (ctx, args) => {
+    const [session, round, player] = await Promise.all([
+      getActiveSession(ctx, args.lobbyId),
+      ctx.db.get(args.roundId),
+      ctx.db.get(args.playerId),
+    ]);
+
+    if (
+      session === null ||
+      round === null ||
+      player === null ||
+      round.sessionId !== session._id ||
+      round.status !== "Playing" ||
+      session.status !== "Playing" ||
+      !player.isActive ||
+      player.kind !== "ai" ||
+      !session.playerOrderIds.includes(player._id)
+    ) {
+      return null;
+    }
+
+    const existingSubmission = await ctx.db
+      .query("feedItForwardSubmissions")
+      .withIndex("roundIdAndAuthorPlayerId", (query) =>
+        query.eq("roundId", round._id).eq("authorPlayerId", player._id),
+      )
+      .unique();
+
+    if (existingSubmission !== null) {
+      return null;
+    }
+
+    const assignment = deriveRoundAssignment(
+      session.playerOrderIds,
+      round.roundNumber,
+      player._id,
+    );
+
+    if (assignment === null) {
+      return null;
+    }
+
+    const chain = await getChain(
+      ctx,
+      session._id,
+      assignment.ownerPlayerId,
+      assignment.slotIndex,
+    );
+
+    if (
+      chain === null ||
+      chain.status !== "Ready" ||
+      chain.currentSourceKey === undefined
+    ) {
+      return null;
+    }
+
+    const sourceStep = await ctx.db
+      .query("feedItForwardChainSteps")
+      .withIndex("sourceKey", (query) =>
+        query.eq("sourceKey", chain.currentSourceKey as string),
+      )
+      .unique();
+
+    if (
+      sourceStep === null ||
+      sourceStep.imageStorageId === undefined ||
+      sourceStep.imageMediaType === undefined
+    ) {
+      return null;
+    }
+
+    return {
+      lobbyId: args.lobbyId,
+      roundId: round._id,
+      playerId: player._id,
+      playerDisplayName: player.displayName,
+      personalityType: player.aiPersonalityType ?? "complimenting",
+      customPrompt: player.aiCustomPrompt ?? null,
+      sourceImageStorageId: sourceStep.imageStorageId,
+      sourceImageMediaType: sourceStep.imageMediaType,
+      sourcePrompt: sourceStep.prompt,
+    };
+  },
+});
+
+export const submitPromptAsPlayer = internalMutation({
+  args: {
+    lobbyId: v.id("lobbies"),
+    playerId: v.id("lobbyPlayers"),
+    prompt: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const [session, player] = await Promise.all([
+      getActiveSession(ctx, args.lobbyId),
+      ctx.db.get(args.playerId),
+    ]);
+
+    if (
+      session === null ||
+      session.status !== "Playing" ||
+      player === null ||
+      player.lobbyId !== args.lobbyId ||
+      !player.isActive ||
+      !session.playerOrderIds.includes(player._id)
+    ) {
+      return null;
+    }
+
+    const round = await getCurrentRound(
+      ctx,
+      session._id,
+      session.currentRoundNumber,
+    );
+
+    if (
+      round === null ||
+      round.status !== "Playing" ||
+      Date.now() > round.endsAt
+    ) {
+      return null;
+    }
+
+    return await upsertRoundSubmissionForPlayer(ctx, {
+      lobbyId: args.lobbyId,
+      session,
+      round,
+      playerId: player._id,
+      prompt: args.prompt,
+      replaceExisting: false,
+    });
   },
 });
 
