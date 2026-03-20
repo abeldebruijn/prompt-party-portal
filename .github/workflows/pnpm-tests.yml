@@ -1,0 +1,28 @@
+name: PNPM tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: "22"
+          cache: true
+
+      - run: vp install
+
+      - run: vp check
+
+      - run: pnpm convex codegen
+
+      - run: vp test
+
+      - run: vp build
