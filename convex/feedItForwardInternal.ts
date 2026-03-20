@@ -48,8 +48,8 @@ async function scheduleAiRoundSubmissions(
   const participants = await Promise.all(
     session.playerOrderIds.map((playerId) => ctx.db.get(playerId)),
   );
-  const aiPlayers = participants.filter(
-    (player) => player?.isActive && player.kind === "ai",
+  const aiPlayers = participants.flatMap((player) =>
+    player?.isActive && player.kind === "ai" ? [player] : [],
   );
 
   for (const [index, player] of aiPlayers.entries()) {
