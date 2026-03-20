@@ -26,5 +26,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Run convex codegen
+        run: pnpm convex codegen
+
       - name: Run test suite
         run: pnpm run test:once
