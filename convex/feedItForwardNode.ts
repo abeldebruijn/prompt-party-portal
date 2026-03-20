@@ -42,6 +42,12 @@ function decodeBase64(base64: string) {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+function toArrayBuffer(bytes: Uint8Array) {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer as ArrayBuffer;
+}
+
 const FEED_IT_FORWARD_ANIMALS = [
   "otter",
   "penguin",
@@ -208,7 +214,7 @@ async function uploadGeneratedImage(
     headers: {
       "Content-Type": mediaType,
     },
-    body,
+    body: new Blob([toArrayBuffer(body)], { type: mediaType }),
   });
 
   if (!response.ok) {
@@ -225,7 +231,9 @@ async function storeGeneratedImage(
   body: Uint8Array,
 ) {
   if (process.env.FEED_IT_FORWARD_MOCK === "1") {
-    return await ctx.storage.store(new Blob([body], { type: mediaType }));
+    return await ctx.storage.store(
+      new Blob([toArrayBuffer(body)], { type: mediaType }),
+    );
   }
 
   const uploadUrl = await ctx.runMutation(
